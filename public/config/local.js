@@ -1,13 +1,20 @@
 window.config = {
-  path: "/",
-  /** This is an array, but we'll only use the first entry for now */
+  // This must match the location configured for web server
+  path: "/viewer",
   servers: [
     {
       id: "local",
+      // This must match the proxy location configured for the web server
       url: "http://localhost:8008/dicomweb",
       write: true
     }
   ],
+  renderer:
+  {
+    retrieveRendered: false
+  },
+  disableWorklist: false,
+  disableAnnotationTools: false,
   annotations: [
     {
       finding: {
