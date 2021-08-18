@@ -44,7 +44,16 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
   }
 
   componentDidMount (): void {
-    this.fetchData({ offset: 0, limit: this.state.pageSize })
+    const queryParams: { [key: string]: any } = { ModalitiesInStudy: 'SM' }
+    this.props.client.searchForStudies(queryParams).then((studies) => {
+      this.setState({
+        numStudies: studies.length,
+        studies: studies.slice(0, this.state.pageSize).map((study) => {
+          const metadata = dmv.metadata.formatMetadata(study)
+          return metadata as dmv.metadata.Study
+        })
+      })
+    })
   }
 
   handleClick (event: React.SyntheticEvent, study: dmv.metadata.Study): void {
@@ -74,12 +83,12 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
     }
     const searchOptions = { queryParams }
     this.props.client.searchForStudies(searchOptions).then((studies) => {
-      this.setState(state => ({
+      this.setState({
         studies: studies.map((study) => {
           const metadata = dmv.metadata.formatMetadata(study)
           return metadata as dmv.metadata.Study
         })
-      }))
+      })
     }).catch(() => message.error('Request to search for studies failed.'))
   }
 
@@ -87,7 +96,7 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
     pagination: TablePaginationConfig,
     filters: any
   ): void {
-    this.setState(state => ({ isLoading: true }))
+    this.setState({ isLoading: true })
     let index = pagination.current
     if (index === undefined) {
       index = 1
@@ -102,7 +111,7 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
       }
     }
     this.fetchData({ offset, limit, searchCriteria })
-    this.setState(state => ({ isLoading: false }))
+    this.setState({ isLoading: false })
   }
 
   handleSearch = (
