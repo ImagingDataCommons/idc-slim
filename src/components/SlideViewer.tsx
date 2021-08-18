@@ -29,8 +29,11 @@ import AnnotationList from './AnnotationList'
 import Button from './Button'
 import Report, { MeasurementReport } from './Report'
 import SpecimenList from './SpecimenList'
-import { AnnotationSettings } from '../AppConfig'
+import SamplesList from './SamplesList'
+import { AnnotationSettings, RendererSettings } from '../AppConfig'
 import { findContentItemsByName } from '../utils/sr'
+import { Slide } from '../data/slides'
+import { SOPClassUIDs } from '../data/uids'
 
 const _buildKey = (concept: dcmjs.sr.coding.CodedConcept): string => {
   const codingScheme = concept.CodingSchemeDesignator
@@ -91,6 +94,108 @@ const _areROIsEqual = (a: dmv.roi.ROI, b: dmv.roi.ROI): boolean => {
   return true
 }
 
+/*
+ * Check whether the report is structured according to template
+ * TID 1500 "MeasurementReport".
+ */
+const _implementsTID1500 = (
+  report: dmv.metadata.Comprehensive3DSR
+): boolean => {
+  const templateSeq = report.ContentTemplateSequence
+  if (templateSeq.length > 0) {
+    const tid = templateSeq[0].TemplateIdentifier
+    if (tid === '1500') {
+      return true
+    }
+  }
+  return false
+}
+
+/*
+ * Check whether the subject described in the report is a specimen as compared
+ * to a patient, fetus, or device.
+ */
+const _describesSpecimenSubject = (
+  report: dmv.metadata.Comprehensive3DSR
+): boolean => {
+    const items = findContentItemsByName({
+      content: report.ContentSequence,
+      name: new dcmjs.sr.coding.CodedConcept({
+        value: '121024',
+        schemeDesignator: 'DCM',
+        meaning: 'Subject Class'
+      })
+    })
+    if (items.length === 0) {
+      return false
+    }
+    const subjectClassItem = items[0] as dcmjs.sr.valueTypes.CodeContentItem
+    const subjectClassValue = subjectClassItem.ConceptCodeSequence[0]
+    const retrievedConcept = new dcmjs.sr.coding.CodedConcept({
+      value: subjectClassValue.CodeValue,
+      meaning: subjectClassValue.CodeMeaning,
+      schemeDesignator: subjectClassValue.CodingSchemeDesignator,
+    })
+    const expectedConcept = new dcmjs.sr.coding.CodedConcept({
+      value: '121027',
+      meaning: 'Specimen',
+      schemeDesignator: 'DCM'
+    })
+    if (retrievedConcept.equals(expectedConcept)) {
+      return true
+    }
+    return false
+}
+
+/*
+ * Check whether the report contains appropriate graphic ROI annotations.
+ */
+const _containsROIAnnotations = (
+  report: dmv.metadata.Comprehensive3DSR
+): boolean => {
+  const measurements = findContentItemsByName({
+    content: report.ContentSequence,
+    name: new dcmjs.sr.coding.CodedConcept({
+      value: '126010',
+      schemeDesignator: 'DCM',
+      meaning: 'Imaging Measurements'
+    })
+  })
+  if (measurements.length === 0) {
+    return false
+  }
+  const container = measurements[0] as dcmjs.sr.valueTypes.ContainerContentItem
+  const measurementGroups = findContentItemsByName({
+    content: container.ContentSequence,
+    name: new dcmjs.sr.coding.CodedConcept({
+      value: '125007',
+      schemeDesignator: 'DCM',
+      meaning: 'Measurement Group'
+    })
+  })
+
+  let foundRegion = false
+  measurementGroups.forEach((group) => {
+    const container = group as dcmjs.sr.valueTypes.ContainerContentItem
+    const regions = findContentItemsByName({
+      content: container.ContentSequence,
+      name: new dcmjs.sr.coding.CodedConcept({
+        value: '111030',
+        schemeDesignator: 'DCM',
+        meaning: 'Image Region'
+      })
+    })
+    if (regions.length > 0) {
+      if (regions[0].ValueType === dcmjs.sr.valueTypes.ValueTypes.SCOORD3D) {
+        foundRegion = true
+      }
+    }
+  })
+
+  return foundRegion
+}
+
+
 interface EvaluationOptions {
   name: dcmjs.sr.coding.CodedConcept
   values: dcmjs.sr.coding.CodedConcept[]
@@ -102,6 +207,7 @@ interface Evaluation {
 }
 
 interface SlideViewerProps extends RouteComponentProps {
+  slides: Slide[]
   client: DicomWebManager
   studyInstanceUID: string
   seriesInstanceUID: string
@@ -111,7 +217,9 @@ interface SlideViewerProps extends RouteComponentProps {
     uid: string
     organization?: string
   }
+  renderer: RendererSettings
   annotations: AnnotationSettings[]
+  enableAnnotationTools: boolean
   user?: {
     name: string
     email: string
@@ -119,7 +227,7 @@ interface SlideViewerProps extends RouteComponentProps {
 }
 
 interface SlideViewerState {
-  metadata: dmv.metadata.VLWholeSlideMicroscopyImage[]
+  activeSlide: Slide
   annotatedRoi?: dmv.roi.ROI
   selectedRoiUIDs: string[]
   visibleRoiUIDs: string[]
@@ -137,19 +245,6 @@ interface SlideViewerState {
  * potentially one or more associated DICOM Series of DICOM SR documents.
  */
 class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
-  state = {
-    isLoading: false,
-    metadata: [],
-    isAnnotationModalVisible: false,
-    annotatedRoi: undefined,
-    selectedRoiUIDs: [],
-    visibleRoiUIDs: [],
-    selectedFinding: undefined,
-    selectedEvaluations: [],
-    isReportModalVisible: false,
-    generatedReport: undefined
-  }
-
   private readonly findingOptions: dcmjs.sr.coding.CodedConcept[] = []
 
   private readonly evaluationOptions: { [key: string]: EvaluationOptions[] } = {}
@@ -200,7 +295,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.handleRoiTranslation = this.handleRoiTranslation.bind(this)
     this.handleRoiModification = this.handleRoiModification.bind(this)
     this.handleRoiVisibility = this.handleRoiVisibility.bind(this)
-    this.handleAnnotationVisibility = this.handleAnnotationVisibility.bind(this)
+    this.handleAnnotationVisibilityChange = this.handleAnnotationVisibilityChange.bind(this)
     this.handleRoiRemoval = this.handleRoiRemoval.bind(this)
     this.handleAnnotationSelection = this.handleAnnotationSelection.bind(this)
     this.handleReportGeneration = this.handleReportGeneration.bind(this)
@@ -210,13 +305,44 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.handleAnnotationCancellation = this.handleAnnotationCancellation.bind(this)
     this.handleReportVerification = this.handleReportVerification.bind(this)
     this.handleReportCancellation = this.handleReportCancellation.bind(this)
+
+    const slides = this.props.slides.filter(item => {
+      const slideIndex = item.seriesInstanceUIDs.findIndex((uid) => {
+        return uid === this.props.seriesInstanceUID
+      })
+      if (slideIndex !== -1) {
+        return true
+      }
+      return false
+    })
+
+    if (slides.length === 0) {
+      throw new Error(
+        'No matching slide was found for selected series ' +
+        `"${this.props.seriesInstanceUID}"`
+      )
+    }
+
+    this.state = {
+      isLoading: false,
+      activeSlide: slides[0],
+      isAnnotationModalVisible: false,
+      annotatedRoi: undefined,
+      selectedRoiUIDs: [],
+      visibleRoiUIDs: [],
+      selectedFinding: undefined,
+      selectedEvaluations: [],
+      isReportModalVisible: false,
+      generatedReport: undefined
+    }
   }
 
   componentDidUpdate (previousProps: SlideViewerProps): void {
     /** Fetch data and update the viewports if the route has changed,
      * i.e., if another series has been selected.
      */
-    if (this.props.location !== previousProps.location) {
+    if (this.props.location !== previousProps.location ||
+      this.props.slides !== previousProps.slides) {
       console.log(
         'switch viewports from series ' +
         previousProps.seriesInstanceUID +
@@ -230,11 +356,15 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   /**
    * Retrieve structured report instances that contain regions of interests
    * with 3D spatial coordinates defined in the same frame of reference as the
-   * currently selected series and adds them to the VOLUME image viewer.
+   * currently selected series and add them to the VOLUME image viewer.
    */
   addAnnotations = (): void => {
+    const viewer = this.volumeViewer
+    if (viewer === undefined) {
+      return
+    }
     console.info('search for Comprehensive 3D SR instances')
-    this.setState(state => ({ isLoading: true }))
+    this.setState({ isLoading: true })
     this.props.client.searchForInstances({
       studyInstanceUID: this.props.studyInstanceUID,
       queryParams: {
@@ -243,68 +373,92 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     }).then((matchedInstances): void => {
       matchedInstances.forEach(i => {
         const instance = dmv.metadata.formatMetadata(i) as dmv.metadata.Instance
-        if (instance.SOPClassUID === '1.2.840.10008.5.1.4.1.1.88.34') {
+        if (instance.SOPClassUID === SOPClassUIDs.COMPREHENSIVE_3D_SR) {
           console.info(`retrieve SR instance "${instance.SOPInstanceUID}"`)
           this.props.client.retrieveInstance({
-            studyInstanceUID: instance.StudyInstanceUID ?? this.props.studyInstanceUID,
+            studyInstanceUID: this.props.studyInstanceUID,
             seriesInstanceUID: instance.SeriesInstanceUID,
             sopInstanceUID: instance.SOPInstanceUID
           }).then((retrievedInstance): void => {
             const data = dcmjs.data.DicomMessage.readFile(retrievedInstance)
             const dataset = dmv.metadata.formatMetadata(data.dict)
             const report = dataset as unknown as dmv.metadata.Comprehensive3DSR
+            /*
+             * Perform a couple of checks to ensure the document content of the
+             * report fullfils the requirements of the application.
+             */
+            if (!_implementsTID1500(report)) {
+              console.debug(
+                `ignore SR document "${report.SOPInstanceUID}" ` +
+                'because it is not structured according to template ' +
+                'TID 1500 "MeasurementReport"'
+              )
+              return
+            }
+            if (!_describesSpecimenSubject(report)) {
+              console.debug(
+                `ignore SR document "${report.SOPInstanceUID}" ` +
+                'because it does not describe a specimen subject'
+              )
+              return
+            }
+            if (!_containsROIAnnotations(report)) {
+              console.debug(
+                `ignore SR document "${report.SOPInstanceUID}" ` +
+                'because it does not contain any suitable ROI annotations'
+              )
+              return
+            }
+
             const content = new MeasurementReport(report)
             content.ROIs.forEach(roi => {
               console.info(`add ROI "${roi.uid}"`)
               const scoord3d = roi.scoord3d
-              const image = (
-                this.state.metadata[0] as
-                dmv.metadata.VLWholeSlideMicroscopyImage
-              )
+              const slide = this.state.activeSlide
+              const image = slide.volumeImages[0]
               if (scoord3d.frameOfReferenceUID === image.FrameOfReferenceUID) {
-                if (this.volumeViewer !== undefined) {
-                  /**
-                   * ROIs may get assigned new UIDs upon re-rendering of the
-                   * page and we need to ensure that we don't add them twice.
-                   * The same ROI may be stored in multiple SR documents and
-                   * we don't want them to show up twice.
-                   * TODO: We should probably either "merge" measurements and
-                   * quantitative evaluations or pick the ROI from the "best"
-                   * available report (COMPLETE and VERIFIED).
-                   */
-                  const doesROIExist = this.volumeViewer.getAllROIs().some(
-                    (otherROI: dmv.roi.ROI): boolean => {
-                      return _areROIsEqual(otherROI, roi)
-                    }
-                  )
-                  if (!doesROIExist) {
-                    try {
-                      // Add ROI without style such that it won't be visible.
-                      this.volumeViewer.addROI(roi, {})
-                    } catch {
-                      console.error(`could not add ROI "${roi.uid}"`)
-                    }
+                /*
+                 * ROIs may get assigned new UIDs upon re-rendering of the
+                 * page and we need to ensure that we don't add them twice.
+                 * The same ROI may be stored in multiple SR documents and
+                 * we don't want them to show up twice.
+                 * TODO: We should probably either "merge" measurements and
+                 * quantitative evaluations or pick the ROI from the "best"
+                 * available report (COMPLETE and VERIFIED).
+                 */
+                const doesROIExist = viewer.getAllROIs().some(
+                  (otherROI: dmv.roi.ROI): boolean => {
+                    return _areROIsEqual(otherROI, roi)
                   }
-                } else {
-                  console.error(
-                    `could not add ROI "${roi.uid}" ` +
-                    'because viewer has not yet been instantiated'
-                  )
+                )
+                if (!doesROIExist) {
+                  try {
+                    // Add ROI without style such that it won't be visible.
+                    viewer.addROI(roi, {})
+                  } catch {
+                    console.error(`could not add ROI "${roi.uid}"`)
+                  }
                 }
+              } else {
+                console.debug(
+                  `skip ROI "${roi.uid}" ` +
+                  `of SR document "${report.SOPInstanceUID}"` +
+                  'because it is defined in another frame of reference'
+                )
               }
             })
             // State update will also ensure that the component is re-rendered.
-            this.setState(state => ({ isLoading: false }))
+            this.setState({ isLoading: false })
           }).catch((error) => {
             // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            message.error('An error occured. Annotation could not be loaded')
+            // message.error('An error occured. Annotations could not be loaded')
             console.error(error)
           })
         }
       })
     }).catch((error) => {
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      message.error('An error occured. Annotations could not be loaded')
+      // message.error('An error occured. Annotations could not be loaded')
       console.error(error)
     })
   }
@@ -314,85 +468,91 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * instantiate the VOLUME and LABEL image viewers.
    */
   populateViewports = (): void => {
-    console.info(
-      `retrieve metadata for series "${this.props.seriesInstanceUID}"`
-    )
-    this.setState(state => ({ isLoading: true }))
-    this.props.client.retrieveSeriesMetadata({
-      studyInstanceUID: this.props.studyInstanceUID,
-      seriesInstanceUID: this.props.seriesInstanceUID
-    }).then((retrievedMetadata): void => {
-      const series: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
-      retrievedMetadata.forEach(item => {
-        const instance = dmv.metadata.formatMetadata(item) as dmv.metadata.VLWholeSlideMicroscopyImage
-        series.push(instance)
+    const slideArray = this.props.slides
+    const slides = slideArray.filter(item => {
+      const slideIndex = item.seriesInstanceUIDs.findIndex((uid) => {
+        return uid === this.props.seriesInstanceUID
       })
-      this.setState((state) => ({ metadata: series }))
+      if (slideIndex !== -1) {
+        return true
+      }
+      return false
+    })
 
-      const volumeMetadata = retrievedMetadata.filter((item, index) => {
-        if (series[index].ImageType[2] === 'VOLUME') {
-          return true
-        }
-        return false
+    if (slides.length !== 0) {
+      const slide = slides[0]
+      this.setState({
+        activeSlide: slide,
+        isLoading: true
       })
+
       if (this.volumeViewport.current !== null) {
         console.info(
           'instantiate viewer for VOLUME images of series ' +
           this.props.seriesInstanceUID
         )
         this.volumeViewport.current.innerHTML = ''
-        this.volumeViewer = new dmv.viewer.VolumeImageViewer({
-          client: this.props.client,
-          metadata: volumeMetadata,
-          retrieveRendered: true
-        })
+
+        if (slide.areVolumeImagesMonochrome) {
+          const blendInfo: dmv.channel.BlendingInformation = {
+            opticalPathIdentifier: slide.opticalPathIdentifiers[0],
+            color: [0, 0.9, 0.9],
+            opacity: 1.0,
+            thresholdValues: [0, 255],
+            limitValues: [0, 255],
+            visible: true
+          }
+
+          this.volumeViewer = new dmv.viewer.VolumeImageViewer({
+            client: this.props.client,
+            metadata: slide.volumeImages,
+            blendingInformation: [blendInfo],
+            retrieveRendered: this.props.renderer.retrieveRendered
+          })
+        } else {
+          this.volumeViewer = new dmv.viewer.VolumeImageViewer({
+            client: this.props.client,
+            metadata: slide.volumeImages,
+            retrieveRendered: this.props.renderer.retrieveRendered
+          })
+        }
+
         this.volumeViewer.render({ container: this.volumeViewport.current })
         this.volumeViewer.activateSelectInteraction({})
         this.volumeViewer.toggleOverviewMap()
       }
 
-      const labelMetadata = retrievedMetadata.filter((item, index) => {
-        if (series[index].ImageType[2] === 'LABEL') {
-          return true
-        }
-        return false
-      })
       if (this.labelViewport.current !== null) {
         this.labelViewport.current.innerHTML = ''
-        if (labelMetadata.length > 0) {
+        if (slide.labelImages.length > 0) {
           console.info(
             'instantiate viewer for LABEL image of series ' +
             this.props.seriesInstanceUID
           )
           this.labelViewer = new dmv.viewer.LabelImageViewer({
             client: this.props.client,
-            metadata: labelMetadata[0],
+            metadata: slide.labelImages[0],
             resizeFactor: 1,
             orientation: 'vertical'
           })
           this.labelViewer.render({ container: this.labelViewport.current })
         }
       }
-    }).catch(
-      (error) => {
-        // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        message.error(
-          'An error occured. Metadata could not be retrieved for series ' +
-          this.props.seriesInstanceUID
-        )
-        console.error(error)
-      }
-    )
+    }
+
+    // State update will also ensure that the component is re-rendered.
+    this.setState({ isLoading: false })
+
     this.addAnnotations()
   }
 
   onRoiDrawn = (event: CustomEventInit): void => {
     const roi = event.detail.payload as dmv.roi.ROI
     console.debug(`added ROI "${roi.uid}"`)
-    this.setState(state => ({
+    this.setState({
       isAnnotationModalVisible: true,
       annotatedRoi: roi
-    }))
+    })
     if (this.volumeViewer !== undefined) {
       if (this.volumeViewer.isDrawInteractionActive) {
         console.info('deactivate drawing of ROIs')
@@ -417,13 +577,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             }
           })
         }
-        this.setState(state => ({
+        this.setState({
           selectedRoiUIDs: [...this.state.selectedRoiUIDs, selectedRoi.uid]
-        }))
+        })
       } else {
-        this.setState(state => ({
-          selectedRoiUIDs: []
-        }))
+        this.setState({ selectedRoiUIDs: [] })
       }
     }
   }
@@ -461,6 +619,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       'dicommicroscopyviewer_roi_removed',
       this.onRoiRemoved
     )
+
     this.populateViewports()
   }
 
@@ -478,7 +637,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.findingOptions.forEach(finding => {
       if (finding.CodeValue === value) {
         console.info(`selected finding "${finding.CodeMeaning}"`)
-        this.setState(state => ({ selectedFinding: finding }))
+        this.setState({ selectedFinding: finding })
       }
     })
   }
@@ -508,12 +667,12 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               const filteredEvaluations = this.state.selectedEvaluations.filter(
                 (item: Evaluation) => item.name !== evaluation.name
               )
-              this.setState(state => ({
+              this.setState({
                 selectedEvaluations: [
                   ...filteredEvaluations,
                   { name: name, value: code }
                 ]
-              }))
+              })
             }
           })
         }
@@ -526,15 +685,14 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    */
   handleAnnotationCompletion (): void {
     const viewer = this.volumeViewer
-    const annotatedRoi = this.state.annotatedRoi
+    const roi = this.state.annotatedRoi
     const selectedFinding = this.state.selectedFinding
     const selectedEvaluations = this.state.selectedEvaluations
     if (
-      annotatedRoi !== undefined &&
+      roi !== undefined &&
       selectedFinding !== undefined &&
       viewer !== undefined
     ) {
-      const roi = annotatedRoi as dmv.roi.ROI
       console.info(`completed annotation of ROI "${roi.uid}"`)
       const findingItem = new dcmjs.sr.valueTypes.CodeContentItem({
         name: new dcmjs.sr.coding.CodedConcept({
@@ -558,13 +716,13 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
       this.setState(state => ({
         annotatedRoi: roi,
-        visibleRoiUIDs: [...this.state.visibleRoiUIDs, roi.uid]
+        visibleRoiUIDs: [...state.visibleRoiUIDs, roi.uid]
       }))
       const key = _buildKey(selectedFinding)
       var style = this.roiStyles[key]
       viewer.setROIStyle(roi.uid, style)
     }
-    this.setState(state => ({ isAnnotationModalVisible: false }))
+    this.setState({ isAnnotationModalVisible: false })
   }
 
   /**
@@ -572,15 +730,14 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    */
   handleAnnotationCancellation (): void {
     console.info('cancel annotation')
-    const annotatedRoi = this.state.annotatedRoi
-    if (this.volumeViewer !== undefined && annotatedRoi !== undefined) {
-      const roi = annotatedRoi as dmv.roi.ROI
+    const roi = this.state.annotatedRoi
+    if (this.volumeViewer !== undefined && roi !== undefined) {
       this.volumeViewer.removeROI(roi.uid)
     }
-    this.setState(state => ({
+    this.setState({
       isAnnotationModalVisible: false,
       annotatedRoi: undefined
-    }))
+    })
   }
 
   /**
@@ -722,10 +879,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       manufacturer: 'MGH Computational Pathology'
     })
 
-    this.setState(state => ({
+    this.setState({
       isReportModalVisible: true,
       generatedReport: dataset as dmv.metadata.Comprehensive3DSR
-    }))
+    })
   }
 
   /**
@@ -782,20 +939,20 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         console.error(error)
       })
     }
-    this.setState(state => ({
+    this.setState({
       isReportModalVisible: false,
       generatedReport: undefined
-    }))
+    })
   }
 
   /**
    * Handler that gets called when report generation has been cancelled.
    */
   handleReportCancellation (): void {
-    this.setState(state => ({
+    this.setState({
       isReportModalVisible: false,
       generatedReport: undefined
-    }))
+    })
   }
 
   /**
@@ -808,13 +965,13 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       return
     }
     console.log(`selected ROI ${roiUID}`)
-    this.setState(state => ({ selectedRoiUIDs: [roiUID] }))
+    this.setState({ selectedRoiUIDs: [roiUID] })
     viewer.getAllROIs().forEach((roi) => {
       var style = {}
       if (roi.uid === roiUID) {
         style = this.selectedRoiStyle
         this.setState(state => ({
-          visibleRoiUIDs: [...this.state.visibleRoiUIDs, roiUID]
+          visibleRoiUIDs: [...state.visibleRoiUIDs, roiUID]
         }))
       } else {
         if (this.state.visibleRoiUIDs.includes(roi.uid as never)) {
@@ -830,7 +987,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * Handle toggling of annotation visibility, i.e., whether a given
    * annotation should be either displayed or hidden by the viewer.
    */
-  handleAnnotationVisibility ({ roiUID }: { roiUID: string }): void {
+  handleAnnotationVisibilityChange ({ roiUID }: { roiUID: string }): void {
     const viewer = this.volumeViewer
     if (viewer === undefined) {
       return
@@ -838,8 +995,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     if (this.state.visibleRoiUIDs.includes(roiUID as never)) {
       console.info(`hide ROI ${roiUID}`)
       this.setState(state => ({
-        visibleRoiUIDs: this.state.visibleRoiUIDs.filter(uid => uid !== roiUID),
-        selectedRoiUIDs: this.state.selectedRoiUIDs.filter(uid => uid !== roiUID)
+        visibleRoiUIDs: state.visibleRoiUIDs.filter(uid => uid !== roiUID),
+        selectedRoiUIDs: state.selectedRoiUIDs.filter(uid => uid !== roiUID)
       }))
       viewer.setROIStyle(roiUID, {})
     } else {
@@ -848,7 +1005,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const key = _getRoiKey(roi)
       viewer.setROIStyle(roi.uid, this.roiStyles[key])
       this.setState(state => ({
-        visibleRoiUIDs: [...this.state.visibleRoiUIDs, roiUID]
+        visibleRoiUIDs: [...state.visibleRoiUIDs, roiUID]
       }))
     }
   }
@@ -936,7 +1093,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
       message.info('Annotation was removed')
     })
-    this.setState(state => ({ selectedRoiUIDs: [] }))
+    this.setState({ selectedRoiUIDs: [] })
   }
 
   /**
@@ -976,6 +1133,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       this.labelViewer.resize()
     }
 
+    let openSubMenuItems = ['specimens', 'annotations']
+
     const handlePolygonRoiDrawing = (): void => {
       this.handleRoiDrawing({ geometryType: 'freehandpolygon' })
     }
@@ -998,7 +1157,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           selectedRoiUIDs={this.state.selectedRoiUIDs}
           visibleRoiUIDs={this.state.visibleRoiUIDs}
           onSelection={this.handleAnnotationSelection}
-          onToggleVisibility={this.handleAnnotationVisibility}
+          onChangeVisibility={this.handleAnnotationVisibilityChange}
         />
       )
     }
@@ -1055,52 +1214,102 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
     }
 
+    let specimenMenu
+    let sampleMenu
+    const slide = this.state.activeSlide
+    if (slide.labelImages.length > 0) {
+      openSubMenuItems.push('label')
+    }
+    if (!slide.isMultiplexed) {
+      specimenMenu = (
+        <Menu.SubMenu key='specimens' title='Specimens'>
+          <SpecimenList
+            metadata={slide.volumeImages[0]}
+            showstain
+          />
+        </Menu.SubMenu>
+      )
+    } else {
+      openSubMenuItems.push('samples')
+      specimenMenu = (
+        <Menu.SubMenu key='specimens' title='Specimens'>
+          <SpecimenList
+            metadata={slide.volumeImages[0]}
+            showstain={false}
+          />
+        </Menu.SubMenu>
+      )
+      const volumeViewer = this.volumeViewer as dmv.viewer.VolumeImageViewer
+      if (volumeViewer !== undefined) {
+        sampleMenu = (
+          <Menu.SubMenu key='samples' title='Samples'>
+            <SamplesList
+              metadata={slide.volumeImages}
+              viewer={volumeViewer}
+            />
+          </Menu.SubMenu>
+        )
+      }
+    }
+
+    let toolbar
+    let toolbarHeight = '0px'
+    if (this.props.enableAnnotationTools) {
+      toolbar = (
+        <Row>
+          <Button
+            isToggle
+            tooltip='Draw ROI'
+            icon={FaDrawPolygon}
+            onClick={handlePolygonRoiDrawing}
+          />
+          <Button
+            isToggle
+            tooltip='Measure'
+            icon={FaRuler}
+            onClick={handleLineRoiDrawing}
+          />
+          <Button
+            isToggle
+            tooltip='Modify ROIs'
+            icon={FaHandPointer}
+            onClick={this.handleRoiModification}
+          />
+          <Button
+            isToggle
+            tooltip='Shift ROIs'
+            icon={FaHandPaper}
+            onClick={this.handleRoiTranslation}
+          />
+          <Button
+            tooltip='Remove selected ROI'
+            onClick={this.handleRoiRemoval}
+            icon={FaTrash}
+          />
+          <Button
+            isToggle
+            tooltip='Show/Hide ROIs'
+            icon={FaEye}
+            onClick={this.handleRoiVisibility}
+          />
+          <Button
+            tooltip='Save ROIs'
+            icon={FaSave}
+            onClick={this.handleReportGeneration}
+          />
+        </Row>
+      )
+      toolbarHeight = '50px'
+    }
+
     return (
       <Layout style={{ height: '100%' }} hasSider>
         <Layout.Content style={{ height: '100%' }}>
-          <Row>
-            <Button
-              isToggle
-              tooltip='Draw ROI'
-              icon={FaDrawPolygon}
-              onClick={handlePolygonRoiDrawing}
-            />
-            <Button
-              isToggle
-              tooltip='Measure'
-              icon={FaRuler}
-              onClick={handleLineRoiDrawing}
-            />
-            <Button
-              isToggle
-              tooltip='Modify ROIs'
-              icon={FaHandPointer}
-              onClick={this.handleRoiModification}
-            />
-            <Button
-              isToggle
-              tooltip='Shift ROIs'
-              icon={FaHandPaper}
-              onClick={this.handleRoiTranslation}
-            />
-            <Button
-              tooltip='Remove selected ROI'
-              onClick={this.handleRoiRemoval}
-              icon={FaTrash}
-            />
-            <Button
-              isToggle
-              tooltip='Show/Hide ROIs'
-              icon={FaEye}
-              onClick={this.handleRoiVisibility}
-            />
-            <Button
-              tooltip='Save ROIs'
-              icon={FaSave}
-              onClick={this.handleReportGeneration}
-            />
-          </Row>
-          <div style={{ height: 'calc(100% - 50px)' }} ref={this.volumeViewport} />
+          {toolbar}
+          <div
+            style={{ height: `calc(100% - ${toolbarHeight})` }}
+            ref={this.volumeViewport}
+          />
 
           <Modal
             visible={this.state.isAnnotationModalVisible}
@@ -1134,17 +1343,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         >
           <Menu
             mode='inline'
-            defaultOpenKeys={['labelImage', 'annotations']}
+            defaultOpenKeys={openSubMenuItems}
             style={{ height: '100%' }}
             inlineIndent={14}
             theme='light'
           >
-            <Menu.SubMenu key='labelImage' title='Slide label'>
+            <Menu.SubMenu key='label' title='Slide label'>
               <div style={{ height: '220px' }} ref={this.labelViewport} />
             </Menu.SubMenu>
-            <Menu.SubMenu key='specimens' title='Specimens'>
-              <SpecimenList metadata={this.state.metadata} />
-            </Menu.SubMenu>
+            {specimenMenu}
+            {sampleMenu}
             <Menu.SubMenu key='annotations' title='Annotations'>
               {annotations}
             </Menu.SubMenu>
