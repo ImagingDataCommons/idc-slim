@@ -362,6 +362,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     if (viewer === undefined) {
       return
     }
+
     console.info('search for Comprehensive 3D SR instances')
     this.setState({ isLoading: true })
     this.props.client.searchForInstances({
@@ -411,7 +412,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
             const content = new MeasurementReport(report)
             content.ROIs.forEach(roi => {
-              console.info(`add ROI "${roi.uid}"`)
+              console.info(`add ROI "${roi.uid}"`, roi)
               const scoord3d = roi.scoord3d
               const slide = this.state.activeSlide
               const image = slide.volumeImages[0]
@@ -437,6 +438,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                   } catch {
                     console.error(`could not add ROI "${roi.uid}"`)
                   }
+                } else {
+                  console.debug(`skip already existing ROI "${roi.uid}"`)
                 }
               } else {
                 console.debug(
@@ -521,9 +524,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         this.volumeViewer.toggleOverviewMap()
       }
 
-      if (this.labelViewport.current !== null) {
-        this.labelViewport.current.innerHTML = ''
-        if (slide.labelImages.length > 0) {
+      if (slide.labelImages.length > 0) {
+        if (this.labelViewport.current !== null) {
+          this.labelViewport.current.innerHTML = ''
           console.info(
             'instantiate viewer for LABEL image of series ' +
             this.props.seriesInstanceUID
@@ -534,7 +537,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             resizeFactor: 1,
             orientation: 'vertical'
           })
-          this.labelViewer.render({ container: this.labelViewport.current })
+          this.labelViewer.render({
+            container: this.labelViewport.current
+          })
         }
       }
     }
@@ -1346,9 +1351,12 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             style={{ height: '100%' }}
             inlineIndent={14}
             theme='light'
+            forceSubMenuRender
           >
             <Menu.SubMenu key='label' title='Slide label'>
-              <div style={{ height: '220px' }} ref={this.labelViewport} />
+              <Menu.Item style={{ height: '100%' }}>
+                <div style={{ height: '220px' }} ref={this.labelViewport} />
+              </Menu.Item>
             </Menu.SubMenu>
             {specimenMenu}
             {sampleMenu}
