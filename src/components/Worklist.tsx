@@ -103,11 +103,11 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
   ): void {
     this.setState({ isLoading: true })
     let index = pagination.current
-    if (index === undefined) {
-      index = 1
-    }
-    const offset = this.state.pageSize * (index - 1)
-    const limit = this.state.pageSize
+    index = index ? index : 1
+    let pageSize = pagination.pageSize
+    pageSize = pageSize ? pageSize : this.state.pageSize
+    const offset = pageSize * (index - 1)
+    const limit = pageSize
     console.debug(`search for studies of page #${index}...`)
     const searchCriteria: { [attribute: string]: string } = {}
     for (const dataIndex in filters) {
@@ -116,7 +116,7 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
       }
     }
     this.fetchData({ offset, limit, searchCriteria })
-    this.setState({ isLoading: false })
+    this.setState({ isLoading: false, pageSize: pageSize })
   }
 
   handleSearch = (
@@ -134,9 +134,14 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
   render (): React.ReactNode {
     const columns: ColumnsType<dmv.metadata.Study> = [
       {
-        title: 'Study ID',
+        title: 'Accession Number',
         dataIndex: 'AccessionNumber',
         ...this.getColumnSearchProps('AccessionNumber')
+      },
+      {
+        title: 'Study ID',
+        dataIndex: 'StudyID',
+        ...this.getColumnSearchProps('StudyID')
       },
       {
         title: 'Study Date',
@@ -173,6 +178,21 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
         title: "Referring Physician's Name",
         dataIndex: 'ReferringPhysicianName',
         render: (value: dmv.metadata.PersonName): string => parseName(value)
+      },
+      {
+        title: 'Modalities in Study',
+        dataIndex: 'ModalitiesInStudy',
+        render: (value: string[] | string): string => {
+          if (value === undefined) {
+            /*
+             * This should not happen, since the attribute is required.
+             * However, some origin servers don't include it.
+             */
+            return 'SM,?'
+          } else {
+            return String(value)
+          }
+        }
       }
     ]
 
