@@ -17,12 +17,14 @@ export default class DicomWebManager {
     settings: ServerSettings[]
     onError?: DicomWebManagerErrorHandler
   }) {
-    this.handleError = () => {}
-    if (onError) {
-      this.handleError = onError;
+    if (onError != null) {
+      this.handleError = onError
+    } else {
+      this.handleError = (error, serverSettings) => {
+        console.error(error, serverSettings)
+      }
     }
-    
-    this.datastores = []
+
     settings.forEach(serverSettings => {
       if (serverSettings === undefined) {
         throw Error('At least one server needs to be configured.')
