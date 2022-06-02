@@ -21,7 +21,8 @@ import {
   Layout,
   Row,
   Select,
-  Space
+  Space,
+  Tooltip
 } from 'antd'
 import { UndoOutlined } from '@ant-design/icons'
 import * as dmv from 'dicom-microscopy-viewer'
@@ -32,6 +33,7 @@ import DicomWebManager from '../DicomWebManager'
 import AnnotationList from './AnnotationList'
 import AnnotationGroupList from './AnnotationGroupList'
 import Button from './Button'
+import Equipment from './Equipment'
 import Report, { MeasurementReport } from './Report'
 import SpecimenList from './SpecimenList'
 import OpticalPathList from './OpticalPathList'
@@ -291,6 +293,14 @@ interface SlideViewerState {
       numFramesSampled: number
     }
   }
+  defaultOpticalPathStyles: {
+    [opticalPathIdentifier: string]: {
+      color?: number[]
+      paletteColorLookupTable?: dmv.color.PaletteColorLookupTable
+      opacity?: number
+      limitValues?: number[]
+    }
+  }
 }
 
 /**
@@ -452,7 +462,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       isRoiTranslationActive: false,
       isRoiModificationActive: false,
       areRoisHidden: false,
-      pixelDataStatistics: {}
+      pixelDataStatistics: {},
+      defaultOpticalPathStyles: {}
     }
   }
 
@@ -557,13 +568,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 )
               ) {
                 this.setPresentationState(presentationState)
-                this.setState(state => ({
-                  presentationStates: [
-                    ...state.presentationStates,
-                    presentationState
-                  ],
-                  selectedPresentationStateUID: presentationState.SOPInstanceUID
-                }))
               } else {
                 this.setState(state => ({
                   presentationStates: [
@@ -614,9 +618,13 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       } | null
     } = {}
     opticalPaths.forEach(opticalPath => {
+      // First, deactivate and hide all optical paths
+      const identifier = opticalPath.identifier
+      this.volumeViewer.hideOpticalPath(identifier)
+      this.volumeViewer.deactivateOpticalPath(identifier)
+
       presentationState.AdvancedBlendingSequence.forEach(blendingItem => {
         blendingItem.ReferencedImageSequence.forEach(imageItem => {
-          const identifier = opticalPath.identifier
           const index = opticalPath.sopInstanceUIDs.indexOf(
             imageItem.ReferencedSOPInstanceUID
           )
@@ -714,7 +722,12 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     console.log('DEBUG: ', opticalPathStyles, selectedOpticalPathIdentifiers)
     this.setState(state => ({
       activeOpticalPathIdentifiers: selectedOpticalPathIdentifiers,
-      visibleOpticalPathIdentifiers: selectedOpticalPathIdentifiers
+      visibleOpticalPathIdentifiers: selectedOpticalPathIdentifiers,
+      presentationStates: [
+        ...state.presentationStates,
+        presentationState
+      ],
+      selectedPresentationStateUID: presentationState.SOPInstanceUID
     }))
   }
 
@@ -1961,23 +1974,57 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     opticalPaths.sort((a, b) => a.identifier - b.identifier)
 
     const visibleOpticalPathIdentifiers: string[] = []
+    const defaultOpticalPathStyles: {
+      [opticalPathIdentifier: string]: {
+        color?: number[]
+        paletteColorLookupTable?: dmv.color.PaletteColorLookupTable
+        opacity?: number
+        limitValues?: number[]
+      }
+    } = this.state.defaultOpticalPathStyles
     opticalPaths.forEach((item: dmv.opticalPath.OpticalPath) => {
-      // First, hide all optical paths.
-      this.volumeViewer.hideOpticalPath(item.identifier)
-      this.volumeViewer.deactivateOpticalPath(item.identifier)
+      const identifier = item.identifier
+      this.volumeViewer.hideOpticalPath(identifier)
+      this.volumeViewer.deactivateOpticalPath(identifier)
+
+      /*
+       * Reset the style of the optical path to its default if it has
+       * previously been changed.
+       */
+      const stats = this.state.pixelDataStatistics[item.identifier]
+      let limitValues
+      if (stats != null) {
+        limitValues = [stats.min, stats.max]
+      }
+      if (identifier in defaultOpticalPathStyles) {
+        this.volumeViewer.setOpticalPathStyle(
+          identifier,
+          {
+            color: [255, 255, 255],
+            limitValues,
+            opacity: 1
+          }
+        )
+      }
+
       if (item.isMonochromatic) {
+        /*
+         * If the image metadata contains a palette color lookup table for the
+         * optical path, then it will be displayed by default.
+         */
         if (item.paletteColorLookupTableUID != null) {
-          visibleOpticalPathIdentifiers.push(item.identifier)
+          visibleOpticalPathIdentifiers.push(identifier)
         }
       } else {
-        visibleOpticalPathIdentifiers.push(item.identifier)
+        /* Color images will always be displayed by default. */
+        visibleOpticalPathIdentifiers.push(identifier)
       }
     })
 
     /*
      * If no optical paths have been selected for visualization so far, select
      * first 3 optical paths and set a default value of interest (VOI) window
-     * and a default color.
+     * (using pre-computed pixel data statistics) and a default color.
      */
     if (visibleOpticalPathIdentifiers.length === 0) {
       const defaultColors = [
@@ -1986,10 +2033,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         [255, 0, 0]
       ]
       opticalPaths.forEach((item: dmv.opticalPath.OpticalPath) => {
+        const identifier = item.identifier
         if (item.isMonochromatic) {
           const numVisible = visibleOpticalPathIdentifiers.length
           if (numVisible < 3) {
-            const style = this.volumeViewer.getOpticalPathStyle(item.identifier)
+            const style = {
+              ...this.volumeViewer.getOpticalPathStyle(identifier) // copy!
+            }
+            if (!(identifier in defaultOpticalPathStyles)) {
+              defaultOpticalPathStyles[identifier] = style
+            }
             const index = numVisible
             style.color = defaultColors[index]
             const stats = this.state.pixelDataStatistics[item.identifier]
@@ -2012,7 +2065,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     })
     this.setState(state => ({
       activeOpticalPathIdentifiers: visibleOpticalPathIdentifiers,
-      visibleOpticalPathIdentifiers: visibleOpticalPathIdentifiers
+      visibleOpticalPathIdentifiers: visibleOpticalPathIdentifiers,
+      defaultOpticalPathStyles: defaultOpticalPathStyles
     }))
   }
 
@@ -2352,6 +2406,12 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       </Menu.SubMenu>
     )
 
+    const equipmentMenu = (
+      <Menu.SubMenu key='equipment' title='Equipment'>
+        <Equipment metadata={this.props.slide.volumeImages[0]} />
+      </Menu.SubMenu>
+    )
+
     const defaultOpticalPathStyles: {
       [identifier: string]: {
         opacity: number
@@ -2389,6 +2449,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           onOpticalPathVisibilityChange={this.handleOpticalPathVisibilityChange}
           onOpticalPathStyleChange={this.handleOpticalPathStyleChange}
           onOpticalPathActivityChange={this.handleOpticalPathActivityChange}
+          selectedPresentationStateUID={this.state.selectedPresentationStateUID}
         />
       </Menu.SubMenu>
     )
@@ -2413,7 +2474,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         <Menu.SubMenu key='presentationStates' title='Presentation States'>
           <Space align='center' size={20} style={{ padding: '14px' }}>
             <Select
-              style={{ minWidth: 200 }}
+              style={{ minWidth: 200, maxWidth: 200 }}
               onSelect={this.handlePresentationStateSelection}
               key='presentation-states'
               defaultValue={this.props.selectedPresentationStateUID}
@@ -2421,11 +2482,13 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             >
               {presentationStateOptions}
             </Select>
-            <Btn
-              icon={<UndoOutlined />}
-              type='primary'
-              onClick={this.handlePresentationStateReset}
-            />
+            <Tooltip title='Reset'>
+              <Btn
+                icon={<UndoOutlined />}
+                type='primary'
+                onClick={this.handlePresentationStateReset}
+              />
+            </Tooltip>
           </Space>
         </Menu.SubMenu>
       )
@@ -2648,6 +2711,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               </Menu.Item>
             </Menu.SubMenu>
             {specimenMenu}
+            {equipmentMenu}
             {opticalPathMenu}
             {presentationStateMenu}
             <Menu.SubMenu key='annotations' title='Annotations'>
