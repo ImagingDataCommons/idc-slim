@@ -1,6 +1,6 @@
 import React from 'react'
 import * as dmv from 'dicom-microscopy-viewer'
-import { Button, Menu, Select, Space } from 'antd'
+import { Button as Btn, Menu, Select, Space, Tooltip } from 'antd'
 import { AppstoreAddOutlined } from '@ant-design/icons'
 
 import OpticalPathItem from './OpticalPathItem'
@@ -37,6 +37,7 @@ interface OpticalPathListProps {
     opticalPathIdentifier: string
     isActive: boolean
   }) => void
+  selectedPresentationStateUID?: string
 }
 
 interface OpticalPathListState {
@@ -96,12 +97,16 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
       return null
     }
 
-    const isSelectable = this.props.opticalPaths.length > 1
+    const isSelectable = (
+      this.props.opticalPaths.length > 1 &&
+      this.props.selectedPresentationStateUID == null
+    )
     const opticalPathItems: React.ReactNode[] = []
     const optionItems: React.ReactNode[] = []
     this.props.opticalPaths.forEach(opticalPath => {
       const opticalPathIdentifier = opticalPath.identifier
       const images = this.props.metadata[opticalPathIdentifier]
+      const seriesInstanceUID = images[0].SeriesInstanceUID
       images[0].OpticalPathSequence.forEach(opticalPathItem => {
         const id = opticalPathItem.OpticalPathIdentifier
         const description = opticalPathItem.OpticalPathDescription
@@ -109,7 +114,7 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
           if (this.props.activeOpticalPathIdentifiers.includes(id)) {
             opticalPathItems.push(
               <OpticalPathItem
-                key={id}
+                key={`${seriesInstanceUID}-${id}`}
                 opticalPath={opticalPath}
                 metadata={images}
                 isVisible={this.props.visibleOpticalPathIdentifiers.includes(id)}
@@ -148,11 +153,13 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
           >
             {optionItems}
           </Select>
-          <Button
-            icon={<AppstoreAddOutlined />}
-            type='primary'
-            onClick={this.handleItemAddition}
-          />
+          <Tooltip title='Add'>
+            <Btn
+              icon={<AppstoreAddOutlined />}
+              type='primary'
+              onClick={this.handleItemAddition}
+            />
+          </Tooltip>
         </Space>
       )
     }
