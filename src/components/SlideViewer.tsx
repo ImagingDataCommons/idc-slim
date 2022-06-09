@@ -243,6 +243,12 @@ interface Evaluation {
   value: dcmjs.sr.coding.CodedConcept
 }
 
+interface Measurement {
+  name: dcmjs.sr.coding.CodedConcept
+  value?: number
+  unit: dcmjs.sr.coding.CodedConcept
+}
+
 interface SlideViewerProps extends RouteComponentProps {
   slide: Slide
   client: DicomWebManager
@@ -313,6 +319,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   private readonly evaluationOptions: { [key: string]: EvaluationOptions[] } = {}
 
+  private readonly measurements: Measurement[] = []
+
   private readonly geometryTypeOptions: { [key: string]: string[] } = {}
 
   private readonly volumeViewportRef: React.RefObject<HTMLDivElement>
@@ -377,6 +385,15 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             values: evaluation.values.map(value => {
               return new dcmjs.sr.coding.CodedConcept(value)
             })
+          })
+        })
+      }
+      if (annotation.measurements !== undefined) {
+        annotation.measurements.forEach(measurement => {
+          this.measurements.push({
+            name: new dcmjs.sr.coding.CodedConcept(measurement.name),
+            value: undefined,
+            unit: new dcmjs.sr.coding.CodedConcept(measurement.unit)
           })
         })
       }
@@ -463,7 +480,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       isRoiModificationActive: false,
       areRoisHidden: false,
       pixelDataStatistics: {},
-      defaultOpticalPathStyles: {}
+      defaultOpticalPathStyles: {},
+      selectedPresentationStateUID: this.props.selectedPresentationStateUID
     }
   }
 
@@ -562,10 +580,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               )
               if (
                 presentationState.SOPInstanceUID ===
-                this.props.selectedPresentationStateUID || (
-                  this.props.selectedPresentationStateUID === undefined &&
-                  this.state.presentationStates.length === 0
-                )
+                this.props.selectedPresentationStateUID
               ) {
                 this.setPresentationState(presentationState)
                 this.setState(state => ({
@@ -619,7 +634,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const opticalPathStyles: {
       [opticalPathIdentifier: string]: {
         opacity: number
-        paletteColorLookupTable: dmv.color.PaletteColorLookupTable
+        paletteColorLookupTable?: dmv.color.PaletteColorLookupTable
         limitValues?: number[]
       } | null
     } = {}
@@ -630,66 +645,78 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       this.volumeViewer.deactivateOpticalPath(identifier)
 
       presentationState.AdvancedBlendingSequence.forEach(blendingItem => {
-        blendingItem.ReferencedImageSequence.forEach(imageItem => {
+        // FIXME
+        let refInstanceItems = blendingItem.ReferencedInstanceSequence
+        if (refInstanceItems === undefined) {
+          refInstanceItems = blendingItem.ReferencedImageSequence
+        }
+        if (refInstanceItems === undefined) {
+          return
+        }
+        refInstanceItems.forEach(imageItem => {
           const index = opticalPath.sopInstanceUIDs.indexOf(
             imageItem.ReferencedSOPInstanceUID
           )
           if (index >= 0) {
-            const paletteColorLUT = new dmv.color.PaletteColorLookupTable({
-              uid: (
-                blendingItem.PaletteColorLookupTableUID != null
-                  ? blendingItem.PaletteColorLookupTableUID
-                  : ''
-              ),
-              redDescriptor:
-                blendingItem.RedPaletteColorLookupTableDescriptor,
-              greenDescriptor:
-                blendingItem.GreenPaletteColorLookupTableDescriptor,
-              blueDescriptor:
-                blendingItem.BluePaletteColorLookupTableDescriptor,
-              redData: (
-                (blendingItem.RedPaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.RedPaletteColorLookupTableData
-                  )
-                  : undefined
-              ),
-              greenData: (
-                (blendingItem.GreenPaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.GreenPaletteColorLookupTableData
-                  )
-                  : undefined
-              ),
-              blueData: (
-                (blendingItem.BluePaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.BluePaletteColorLookupTableData
-                  )
-                  : undefined
-              ),
-              redSegmentedData: (
-                (blendingItem.SegmentedRedPaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.SegmentedRedPaletteColorLookupTableData
-                  )
-                  : undefined
-              ),
-              greenSegmentedData: (
-                (blendingItem.SegmentedGreenPaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.SegmentedGreenPaletteColorLookupTableData
-                  )
-                  : undefined
-              ),
-              blueSegmentedData: (
-                (blendingItem.SegmentedBluePaletteColorLookupTableData != null)
-                  ? new Uint16Array(
-                    blendingItem.SegmentedBluePaletteColorLookupTableData
-                  )
-                  : undefined
-              )
-            })
+            let paletteColorLUT
+            if (blendingItem.PaletteColorLookupTableSequence != null) {
+              const cpLUTItem = blendingItem.PaletteColorLookupTableSequence[0]
+              paletteColorLUT = new dmv.color.PaletteColorLookupTable({
+                uid: (
+                  cpLUTItem.PaletteColorLookupTableUID != null
+                    ? cpLUTItem.PaletteColorLookupTableUID
+                    : ''
+                ),
+                redDescriptor:
+                  cpLUTItem.RedPaletteColorLookupTableDescriptor,
+                greenDescriptor:
+                  cpLUTItem.GreenPaletteColorLookupTableDescriptor,
+                blueDescriptor:
+                  cpLUTItem.BluePaletteColorLookupTableDescriptor,
+                redData: (
+                  (cpLUTItem.RedPaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.RedPaletteColorLookupTableData
+                    )
+                    : undefined
+                ),
+                greenData: (
+                  (cpLUTItem.GreenPaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.GreenPaletteColorLookupTableData
+                    )
+                    : undefined
+                ),
+                blueData: (
+                  (cpLUTItem.BluePaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.BluePaletteColorLookupTableData
+                    )
+                    : undefined
+                ),
+                redSegmentedData: (
+                  (cpLUTItem.SegmentedRedPaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.SegmentedRedPaletteColorLookupTableData
+                    )
+                    : undefined
+                ),
+                greenSegmentedData: (
+                  (cpLUTItem.SegmentedGreenPaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.SegmentedGreenPaletteColorLookupTableData
+                    )
+                    : undefined
+                ),
+                blueSegmentedData: (
+                  (cpLUTItem.SegmentedBluePaletteColorLookupTableData != null)
+                    ? new Uint16Array(
+                      cpLUTItem.SegmentedBluePaletteColorLookupTableData
+                    )
+                    : undefined
+                )
+              })
+            }
 
             let limitValues
             if (blendingItem.SoftcopyVOILUTSequence != null) {
@@ -1187,14 +1214,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         const size = 2 ** 16
         const chunks = Math.ceil(frameInfo.pixelArray.length / size)
         let offset = 0
-        let min = 0
-        let max = 0
+        const minValues = []
+        const maxValues = []
         for (let i = 0; i < chunks; i++) {
           offset = i * size
-          const pixels = frameInfo.pixelArray.slice(offset, size)
-          min = Math.min(min, ...pixels)
-          max = Math.max(max, ...pixels)
+          const pixels = frameInfo.pixelArray.slice(offset, offset + size)
+          minValues.push(Math.min(...pixels))
+          maxValues.push(Math.max(...pixels))
         }
+        const min = Math.min(...minValues)
+        const max = Math.max(...maxValues)
         this.setState(state => {
           const stats = state.pixelDataStatistics
           if (stats[opticalPathIdentifier] != null) {
@@ -1992,7 +2021,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
        * Reset the style of the optical path to its default if it has
        * previously been changed.
        */
-      const stats = this.state.pixelDataStatistics[item.identifier]
+      const stats = this.state.pixelDataStatistics[identifier]
       let limitValues
       if (stats != null) {
         limitValues = [stats.min, stats.max]
@@ -2076,10 +2105,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * the current list of available presentation states.
    */
   handlePresentationStateReset (): void {
-    this.setDefaultPresentationState()
     this.setState({ selectedPresentationStateUID: undefined })
     const urlPath = this.props.location.pathname
     this.props.history.push(urlPath)
+    this.setDefaultPresentationState()
   }
 
   /**
@@ -2096,10 +2125,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         return item.SOPInstanceUID === value
       })
       if (presentationState != null) {
-        this.setPresentationState(presentationState)
         let urlPath = this.props.location.pathname
         urlPath += `?state=${presentationState.SOPInstanceUID}`
         this.props.history.push(urlPath)
+        this.setPresentationState(presentationState)
       } else {
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
         message.error('Presentation State could not be found')
@@ -2109,7 +2138,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         )
       }
     } else {
-      this.setDefaultPresentationState()
+      this.handlePresentationStateReset()
     }
     this.setState({ selectedPresentationStateUID: value })
   }
@@ -2283,7 +2312,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     mappings.push(...this.volumeViewer.getAllParameterMappings())
     annotationGroups.push(...this.volumeViewer.getAllAnnotationGroups())
 
-    const openSubMenuItems = ['specimens', 'opticalpaths', 'annotations']
+    const openSubMenuItems = [
+      'specimens', 'optical-paths', 'annotations', 'presentation-states'
+    ]
 
     let report: React.ReactNode
     const dataset = this.state.generatedReport
@@ -2380,13 +2411,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         return geometryTypeOptionsMapping[name]
       })
       selections.push(
-        <Select
-          style={{ minWidth: 130 }}
-          onSelect={this.handleAnnotationGeometryTypeSelection}
-          key='annotation-geometry-type'
-        >
-          {geometryTypeOptions}
-        </Select>
+        <>
+          ROI geometry type
+          <Select
+            style={{ minWidth: 130 }}
+            onSelect={this.handleAnnotationGeometryTypeSelection}
+            key='annotation-geometry-type'
+          >
+            {geometryTypeOptions}
+          </Select>
+        </>
       )
       selections.push(
         <Checkbox
@@ -2437,10 +2471,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const metadata = this.volumeViewer.getOpticalPathMetadata(identifier)
       opticalPathMetadata[identifier] = metadata
       const style = this.volumeViewer.getOpticalPathStyle(identifier)
+      if (this.state.selectedPresentationStateUID == null) {
+        const stats = this.state.pixelDataStatistics[identifier]
+        if (stats != null) {
+          style.limitValues = [stats.min, stats.max]
+        }
+      }
       defaultOpticalPathStyles[identifier] = style
     })
     const opticalPathMenu = (
-      <Menu.SubMenu key='opticalpaths' title='Optical Paths'>
+      <Menu.SubMenu key='optical-paths' title='Optical Paths'>
         <OpticalPathList
           metadata={opticalPathMetadata}
           opticalPaths={opticalPaths}
@@ -2456,7 +2496,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     )
 
     let presentationStateMenu
-    console.log('DEBUG: ', this.state.presentationStates)
     if (this.state.presentationStates.length > 0) {
       const presentationStateOptions = this.state.presentationStates.map(
         presentationState => {
@@ -2472,8 +2511,17 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           )
         }
       )
+      presentationStateOptions.push(
+        <Select.Option
+          key='default-presentation-state'
+          value={null}
+          dropdownMatchSelectWidth={false}
+          size='small'
+        >
+        </Select.Option>
+      )
       presentationStateMenu = (
-        <Menu.SubMenu key='presentationStates' title='Presentation States'>
+        <Menu.SubMenu key='presentation-states' title='Presentation States'>
           <Space align='center' size={20} style={{ padding: '14px' }}>
             <Select
               style={{ minWidth: 200, maxWidth: 200 }}
@@ -2549,7 +2597,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         )
       })
       parametricMapMenu = (
-        <Menu.SubMenu key='parmetricmaps' title='Parametric Maps'>
+        <Menu.SubMenu key='parmetric-maps' title='Parametric Maps'>
           <MappingList
             mappings={mappings}
             metadata={mappingMetadata}
@@ -2560,7 +2608,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           />
         </Menu.SubMenu>
       )
-      openSubMenuItems.push('parametricmaps')
+      openSubMenuItems.push('parametric-maps')
     }
 
     let annotationGroupMenu
@@ -2583,7 +2631,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         )
       })
       annotationGroupMenu = (
-        <Menu.SubMenu key='annotationGroups' title='Annotation Groups'>
+        <Menu.SubMenu key='annotation-groups' title='Annotation Groups'>
           <AnnotationGroupList
             annotationGroups={annotationGroups}
             metadata={annotationGroupMetadata}
