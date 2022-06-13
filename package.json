@@ -6,6 +6,7 @@
   "scripts": {
     "start": "craco start",
     "build": "craco build",
+    "build-idc-htan": "REACT_APP_CONFIG=idc-htan PUBLIC_URL='/' craco build",
     "lint": "ts-standard --env jest 'src/**/*.{tsx,ts}'",
     "fmt": "ts-standard --env jest 'src/**/*.{tsx,ts}' --fix",
     "test": "ts-standard --env jest 'src/**/*.{tsx,ts}' && craco test --setupFiles ./src/setupTests.tsx --watchAll=false",
