@@ -12,15 +12,30 @@ It relies on [DICOMweb](https://www.dicomstandard.org/dicomweb/) RESTful service
 
 <img src="docs/screenshots/IDC_CPTAC_C3L-00965-26.png" alt="IDC CPTAC C3L-00965-26" width="100%">
 
-Use *Slim* to visually explore public IDC cancer imaging data collections by visiting the IDC web portal: [portal.imaging.datacommons.cancer.gov](https://portal.imaging.datacommons.cancer.gov/).
+Explore public IDC cancer imaging data collections by visiting the IDC web portal: [portal.imaging.datacommons.cancer.gov](https://portal.imaging.datacommons.cancer.gov/).
+
+The IDC viewer uses the [Google Cloud Healthcare API](https://cloud.google.com/healthcare-api/) as DICOMweb server.
+
+### Demo
+
+Explore additional slide microscopy imaging data sets and advanced viewer features at [herrmannlab.github.io/slim](https://herrmannlab.github.io/slim/).
+
+<img src="docs/screenshots/IDC_HTAN_HTA9_1_32.png" alt="IDC HTAN HTA9_1_32" width="100%">
+
+The demo viewer uses an instance of the open-source [DCM4CHEE Archive](https://github.com/dcm4che/dcm4chee-arc-light) as DICOMweb server.
+It includes brightfield and fluorescence microscopy images that were collected for different research projects, including [The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), the [Clinical Proteomic Tumor Analysis Consortium (CPTAC)](https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/clinical-proteomic-tumor-analysis-consortium-cptac), the [Human Tumor Atlas Network](https://www.cancer.gov/research/key-initiatives/moonshot-cancer-initiative/implementation/human-tumor-atlas)).
+These images were originally stored in SVS-TIFF or OME-TIFF format and were subsequently converted into DICOM format for ingestion into the IDC.
+In addition, the demo includes images that were collected for interoperability demonstrations at DICOM WG-26 Pathology Connectathons or Hackathons.
+These images were directly stored in DICOM format and did require conversion.
+
 
 ## Features
 
 ### Display of images
 
-*Slim* enables interactive visualization of DICOM VL Whole Slide Microscopy Image instances in a vendor-neutral and device-independent manner.
+*Slim* enables interactive visualization of [DICOM VL Whole Slide Microscopy Image](https://dicom.nema.org/medical/dicom/current/output/chtml/part03/sect_A.32.8.html) instances in a vendor-neutral and device-independent manner.
 
-Interoperability with various image acquisition and management systems was successfully demonstrated interoperability at the [DICOM WG-26 Connectathon at Path Visions 2020](https://digitalpathologyassociation.org/past-presentations#PV20) and the [DICOM WG-26 Hackathon at Path Visions 2021](https://digitalpathologyassociation.org/past-presentations#PV21).
+Interoperability with various image acquisition and management systems was successfully demonstrated at the [DICOM WG-26 Connectathon at Path Visions 2020](https://digitalpathologyassociation.org/past-presentations#PV20) and the [DICOM WG-26 Hackathon at Path Visions 2021](https://digitalpathologyassociation.org/past-presentations#PV21).
 Shown below are screenshots of examples images that are publicly available on the NEMA FTP server at [medical.nema.org](ftp://medical.nema.org).
 
 |     | Vendor | Illumination | Stain |
@@ -69,7 +84,7 @@ Users can authenticate and authorize the application to access data via [OpenID 
 
 ## Configuration
 
-The app can be configured via a `public/config/{name}.js` JavaScript configuration file.
+The app can be configured via a `public/config/{name}.js` JavaScript configuration file (see for example the default `public/config/local.js`).
 Please refer to the [AppConfig.d.ts](src/AppConfig.d.ts) file for configuration options.
 
 The configuration can be changed at build-time using the `REACT_APP_CONFIG` environment variable.
@@ -83,7 +98,8 @@ yarn install
 PUBLIC_URL=/ yarn build
 ```
 
-Once the app has been built, the content of the `build` folder can be directly served by a static web server at `/`.
+Once the app has been built, the content of the `build` folder can be directly served by a static web server at the location specified by `PUBLIC_URL` (in this case at `/`).
+The `PUBLIC_URL` must be either a full URL or a relative path to the location at which the viewer application will get deployed (e.g., `PUBLIC_URL=https://herrmannlab.github.io/slim` or `PUBLIC_URL='/slim'`).
 
 
 ### Local
@@ -162,7 +178,8 @@ window.config = {
     authority: "https://accounts.google.com",
     clientId: gcpClientID,
     scope: "email profile openid https://www.googleapis.com/auth/cloud-healthcare",
-    grantType: "implicit"
+    grantType: "implicit",
+    endSessionEndpoint: "https://www.google.com/accounts/Logout"
   },
   annotations: [
     {
@@ -205,7 +222,7 @@ window.config = {
 
 Create an [OIDC client ID for web application](https://developers.google.com/identity/sign-in/web/sign-in).
 
-Note that Google's OIDC implementation does currently not yet support the authorization code grant type with PKCE challenge.
+Note that Google's OIDC implementation does currently not yet support the authorization code grant type with PKCE challenge for private clients.
 For the time being, the legacy implicit grand type has to be used.
 
 

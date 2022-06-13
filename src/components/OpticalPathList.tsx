@@ -1,6 +1,6 @@
 import React from 'react'
 import * as dmv from 'dicom-microscopy-viewer'
-import { Button, Menu, Select, Space } from 'antd'
+import { Button as Btn, Menu, Select, Space, Tooltip } from 'antd'
 import { AppstoreAddOutlined } from '@ant-design/icons'
 
 import OpticalPathItem from './OpticalPathItem'
@@ -37,6 +37,7 @@ interface OpticalPathListProps {
     opticalPathIdentifier: string
     isActive: boolean
   }) => void
+  selectedPresentationStateUID?: string
 }
 
 interface OpticalPathListState {
@@ -149,11 +150,13 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
           >
             {optionItems}
           </Select>
-          <Button
-            icon={<AppstoreAddOutlined />}
-            type='primary'
-            onClick={this.handleItemAddition}
-          />
+          <Tooltip title='Add'>
+            <Btn
+              icon={<AppstoreAddOutlined />}
+              type='primary'
+              onClick={this.handleItemAddition}
+            />
+          </Tooltip>
         </Space>
       )
     }
