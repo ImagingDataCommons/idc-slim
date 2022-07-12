@@ -296,6 +296,7 @@ interface SlideViewerState {
       numFramesSampled: number
     }
   }
+  loadingFrames: Set<string>
 }
 
 /**
@@ -467,7 +468,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       isRoiModificationActive: false,
       areRoisHidden: false,
       pixelDataStatistics: {},
-      selectedPresentationStateUID: this.props.selectedPresentationStateUID
+      selectedPresentationStateUID: this.props.selectedPresentationStateUID,
+      loadingFrames: new Set()
     }
   }
 
@@ -515,7 +517,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         visibleAnnotationGroupUIDs: new Set(),
         visibleOpticalPathIdentifiers,
         activeOpticalPathIdentifiers,
-        presentationStates: []
+        presentationStates: [],
+        loadingFrames: new Set()
       })
       this.populateViewports()
     }
@@ -536,8 +539,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       if (matchedInstances == null) {
         matchedInstances = []
       }
-      matchedInstances.forEach(i => {
-        const { dataset } = dmv.metadata.formatMetadata(i)
+      matchedInstances.forEach((rawInstance, index) => {
+        const { dataset } = dmv.metadata.formatMetadata(rawInstance)
         const instance = dataset as dmv.metadata.Instance
         console.info(`retrieve PR instance "${instance.SOPInstanceUID}"`)
         this.props.client.retrieveInstance({
@@ -566,10 +569,17 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 `"${presentationState.SOPInstanceUID}"`
               )
               if (
-                presentationState.SOPInstanceUID ===
-                this.props.selectedPresentationStateUID
+                index === 0 &&
+                this.props.selectedPresentationStateUID == null
               ) {
                 this.setPresentationState(presentationState)
+              } else {
+                if (
+                  presentationState.SOPInstanceUID ===
+                  this.props.selectedPresentationStateUID
+                ) {
+                  this.setPresentationState(presentationState)
+                }
               }
               this.setState(state => {
                 const mapping: {
@@ -740,6 +750,15 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         this.volumeViewer.deactivateOpticalPath(identifier)
       }
     })
+    const searchParams = new URLSearchParams(this.props.location.search)
+    searchParams.set('state', presentationState.SOPInstanceUID)
+    this.props.navigate(
+      {
+        pathname: this.props.location.pathname,
+        search: searchParams.toString()
+      },
+      { replace: true }
+    )
     this.setState(state => ({
       activeOpticalPathIdentifiers: selectedOpticalPathIdentifiers,
       visibleOpticalPathIdentifiers: selectedOpticalPathIdentifiers,
@@ -1192,14 +1211,53 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.setState({ isLoading: false })
   }
 
+  onFrameLoadingStarted = (event: CustomEventInit): void => {
+    const frameInfo: {
+      studyInstanceUID: string
+      seriesInstanceUID: string
+      sopInstanceUID: string
+      sopClassUID: string
+      frameNumber: string
+      channelIdentifier: string
+    } = event.detail.payload
+    const key: string = `${frameInfo.sopInstanceUID}-${frameInfo.frameNumber}`
+    this.setState(state => {
+      state.loadingFrames.add(key)
+      return state
+    })
+  }
+
   onFrameLoadingEnded = (event: CustomEventInit): void => {
-    const frameInfo = event.detail.payload
+    const frameInfo: {
+      studyInstanceUID: string
+      seriesInstanceUID: string
+      sopInstanceUID: string
+      sopClassUID: string
+      frameNumber: string
+      channelIdentifier: string
+      pixelArray: Uint8Array|Uint16Array|Float32Array|null
+    } = event.detail.payload
+    const key = `${frameInfo.sopInstanceUID}-${frameInfo.frameNumber}`
+    this.setState(state => {
+      state.loadingFrames.delete(key)
+      let isLoading: boolean = false
+      if (state.loadingFrames.size > 0) {
+        isLoading = true
+      }
+      return {
+        isLoading,
+        loadingFrames: state.loadingFrames
+      }
+    })
     if (
       frameInfo.sopClassUID === SOPClassUIDs.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE &&
       this.props.slide.areVolumeImagesMonochrome
     ) {
       const opticalPathIdentifier = frameInfo.channelIdentifier
-      if (!(opticalPathIdentifier in this.state.pixelDataStatistics)) {
+      if (
+        !(opticalPathIdentifier in this.state.pixelDataStatistics) &&
+        frameInfo.pixelArray != null
+      ) {
         /*
          * There are limits on the number of arguments Math.min and Math.max
          * functions can accept. Therefore, we compute values in smaller chunks.
@@ -1207,8 +1265,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         const size = 2 ** 16
         const chunks = Math.ceil(frameInfo.pixelArray.length / size)
         let offset = 0
-        const minValues = []
-        const maxValues = []
+        const minValues: number[] = []
+        const maxValues: number[] = []
         for (let i = 0; i < chunks; i++) {
           offset = i * size
           const pixels = frameInfo.pixelArray.slice(offset, offset + size)
@@ -1231,6 +1289,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               max: max,
               numFramesSampled: 1
             }
+          }
+          if (state.selectedPresentationStateUID == null) {
+            const style = {
+              ...this.volumeViewer.getOpticalPathStyle(opticalPathIdentifier)
+            }
+            style.limitValues = [
+              stats[opticalPathIdentifier].min,
+              stats[opticalPathIdentifier].max
+            ]
+            this.volumeViewer.setOpticalPathStyle(opticalPathIdentifier, style)
           }
           return state
         })
@@ -1267,6 +1335,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     document.body.removeEventListener(
       'dicommicroscopyviewer_loading_ended',
       this.onLoadingEnded
+    )
+    document.body.removeEventListener(
+      'dicommicroscopyviewer_frame_loading_started',
+      this.onFrameLoadingStarted
     )
     document.body.removeEventListener(
       'dicommicroscopyviewer_frame_loading_ended',
@@ -1315,6 +1387,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     document.body.addEventListener(
       'dicommicroscopyviewer_loading_ended',
       this.onLoadingEnded
+    )
+    document.body.addEventListener(
+      'dicommicroscopyviewer_frame_loading_started',
+      this.onFrameLoadingStarted
     )
     document.body.addEventListener(
       'dicommicroscopyviewer_frame_loading_ended',
@@ -2447,12 +2523,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const style = {
         ...this.volumeViewer.getOpticalPathStyle(identifier)
       }
-      if (this.state.selectedPresentationStateUID == null) {
-        const stats = this.state.pixelDataStatistics[identifier]
-        if (stats != null) {
-          style.limitValues = [stats.min, stats.max]
-        }
-      }
       opticalPathStyles[identifier] = style
     })
     const opticalPathMenu = (
@@ -2665,12 +2735,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       toolbarHeight = '50px'
     }
 
-    /* It would be nicer to use the ant Spin component, but that causes issues
-     * with the positioning of the viewport.
-     */
-    let loadingDisplay = 'none'
+    let cursor = 'default'
     if (this.state.isLoading) {
-      loadingDisplay = 'block'
+      cursor = 'progress'
     }
 
     return (
@@ -2678,12 +2745,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         <Layout.Content style={{ height: '100%' }}>
           {toolbar}
 
-          <div className='dimmer' style={{ display: loadingDisplay }} />
-          <div className='spinner' style={{ display: loadingDisplay }} />
           <div
             style={{
               height: `calc(100% - ${toolbarHeight})`,
-              overflow: 'hidden'
+              overflow: 'hidden',
+              cursor: cursor
             }}
             ref={this.volumeViewportRef}
           />

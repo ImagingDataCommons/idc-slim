@@ -23,11 +23,10 @@ Explore additional slide microscopy imaging data sets and advanced viewer featur
 <img src="docs/screenshots/IDC_HTAN_HTA9_1_32.png" alt="IDC HTAN HTA9_1_32" width="100%">
 
 The demo viewer uses an instance of the open-source [DCM4CHEE Archive](https://github.com/dcm4che/dcm4chee-arc-light) as DICOMweb server.
-It includes brightfield and fluorescence microscopy images that were collected for different research projects, including [The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), the [Clinical Proteomic Tumor Analysis Consortium (CPTAC)](https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/clinical-proteomic-tumor-analysis-consortium-cptac), the [Human Tumor Atlas Network](https://www.cancer.gov/research/key-initiatives/moonshot-cancer-initiative/implementation/human-tumor-atlas)).
+It includes brightfield and fluorescence microscopy images that were collected for different research projects, including [The Cancer Genome Atlas (TCGA)](https://www.cancer.gov/about-nci/organization/ccg/research/structural-genomics/tcga), the [Clinical Proteomic Tumor Analysis Consortium (CPTAC)](https://gdc.cancer.gov/about-gdc/contributed-genomic-data-cancer-research/clinical-proteomic-tumor-analysis-consortium-cptac), the [Human Tumor Atlas Network (HTAN)](https://www.cancer.gov/research/key-initiatives/moonshot-cancer-initiative/implementation/human-tumor-atlas)).
 These images were originally stored in SVS-TIFF or OME-TIFF format and were subsequently converted into DICOM format for ingestion into the IDC.
 In addition, the demo includes images that were collected for interoperability demonstrations at DICOM WG-26 Pathology Connectathons or Hackathons.
-These images were directly stored in DICOM format and did require conversion.
-
+These images were directly stored in DICOM format and did not require conversion.
 
 ## Features
 
@@ -242,3 +241,12 @@ The configuration can be specified using the `REACT_APP_CONFIG` environment vari
 ```none
 REACT_APP_CONFIG=local yarn start
 ```
+
+## Citation
+
+For more information about the motivation, design, and capabilities of Slim, please see the following article:
+
+> [Slim: interoperable web viewer and annotation tool for quantitative microscopy tissue imaging](https://arxiv.org/abs/2205.09122)
+> C. Gorman, D. Punzo, I. Octaviano, S. Pieper, W.J.R. Longabaugh, D.A. Clunie, R. Kikinis, A.Y. Fedorov, M.D. Herrmann
+
+If you use Slim in your research, please cite the above article.
