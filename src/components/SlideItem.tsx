@@ -1,6 +1,5 @@
 import React from 'react'
 import { FaSpinner } from 'react-icons/fa'
-
 import * as dmv from 'dicom-microscopy-viewer'
 import { Menu } from 'antd'
 
@@ -29,7 +28,7 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
     isLoading: false
   }
 
-  private readonly overviewViewport = React.createRef<HTMLDivElement>()
+  private readonly overviewViewportRef = React.createRef<HTMLDivElement>()
 
   private overviewViewer?: dmv.viewer.OverviewImageViewer
 
@@ -42,8 +41,8 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
     this.setState({ isLoading: true })
     if (this.props.slide.overviewImages.length > 0) {
       const metadata = this.props.slide.overviewImages[0]
-      if (this.overviewViewport.current !== null) {
-        this.overviewViewport.current.innerHTML = ''
+      if (this.overviewViewportRef.current !== null) {
+        this.overviewViewportRef.current.innerHTML = ''
         console.info(
           'instantiate viewer for OVERVIEW image of series ' +
           metadata.SeriesInstanceUID
@@ -54,7 +53,7 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
           resizeFactor: 1
         })
         this.overviewViewer.render({
-          container: this.overviewViewport.current
+          container: this.overviewViewportRef.current
         })
       }
     }
@@ -65,7 +64,7 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
   render (): React.ReactNode {
     if (this.overviewViewer !== undefined) {
       this.overviewViewer.render({
-        container: this.overviewViewport.current
+        container: this.overviewViewportRef.current
       })
       this.overviewViewer.resize()
     }
@@ -81,7 +80,6 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
       return (<FaSpinner />)
     }
 
-    const title = this.props.slide.containerIdentifier
     /* Properties need to be propagated down to Menu.Item:
      * https://github.com/react-component/menu/issues/142
      */
@@ -92,11 +90,11 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
         {...this.props}
       >
         <Description
-          header={title}
+          header={this.props.slide.containerIdentifier}
           attributes={attributes}
           selectable
         >
-          <div style={{ height: '100px' }} ref={this.overviewViewport} />
+          <div style={{ height: '100px' }} ref={this.overviewViewportRef} />
         </Description>
       </Menu.Item>
     )

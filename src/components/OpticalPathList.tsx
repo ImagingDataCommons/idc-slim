@@ -1,6 +1,6 @@
 import React from 'react'
 import * as dmv from 'dicom-microscopy-viewer'
-import { Button, Menu, Select, Space } from 'antd'
+import { Button as Btn, Menu, Select, Space, Tooltip } from 'antd'
 import { AppstoreAddOutlined } from '@ant-design/icons'
 
 import OpticalPathItem from './OpticalPathItem'
@@ -12,13 +12,14 @@ interface OpticalPathListProps {
   metadata: {
     [opticalPathIdentifier: string]: dmv.metadata.VLWholeSlideMicroscopyImage[]
   }
-  visibleOpticalPathIdentifiers: string[]
-  activeOpticalPathIdentifiers: string[]
+  visibleOpticalPathIdentifiers: Set<string>
+  activeOpticalPathIdentifiers: Set<string>
   defaultOpticalPathStyles: {
     [opticalPathIdentifier: string]: {
       opacity: number
       color?: number[]
       limitValues?: number[]
+      paletteColorLookupTable?: dmv.color.PaletteColorLookupTable
     }
   }
   onOpticalPathVisibilityChange: ({ opticalPathIdentifier, isVisible }: {
@@ -37,6 +38,7 @@ interface OpticalPathListProps {
     opticalPathIdentifier: string
     isActive: boolean
   }) => void
+  selectedPresentationStateUID?: string
 }
 
 interface OpticalPathListState {
@@ -102,17 +104,18 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
     this.props.opticalPaths.forEach(opticalPath => {
       const opticalPathIdentifier = opticalPath.identifier
       const images = this.props.metadata[opticalPathIdentifier]
+      const seriesInstanceUID = images[0].SeriesInstanceUID
       images[0].OpticalPathSequence.forEach(opticalPathItem => {
         const id = opticalPathItem.OpticalPathIdentifier
         const description = opticalPathItem.OpticalPathDescription
         if (opticalPath.identifier === id) {
-          if (this.props.activeOpticalPathIdentifiers.includes(id)) {
+          if (this.props.activeOpticalPathIdentifiers.has(id)) {
             opticalPathItems.push(
               <OpticalPathItem
-                key={id}
+                key={`${seriesInstanceUID}-${id}`}
                 opticalPath={opticalPath}
                 metadata={images}
-                isVisible={this.props.visibleOpticalPathIdentifiers.includes(id)}
+                isVisible={this.props.visibleOpticalPathIdentifiers.has(id)}
                 defaultStyle={this.props.defaultOpticalPathStyles[id]}
                 onVisibilityChange={this.props.onOpticalPathVisibilityChange}
                 onStyleChange={this.props.onOpticalPathStyleChange}
@@ -148,11 +151,13 @@ class OpticalPathList extends React.Component<OpticalPathListProps, OpticalPathL
           >
             {optionItems}
           </Select>
-          <Button
-            icon={<AppstoreAddOutlined />}
-            type='primary'
-            onClick={this.handleItemAddition}
-          />
+          <Tooltip title='Add'>
+            <Btn
+              icon={<AppstoreAddOutlined />}
+              type='primary'
+              onClick={this.handleItemAddition}
+            />
+          </Tooltip>
         </Space>
       )
     }
