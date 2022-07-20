@@ -1,9 +1,10 @@
 import React from 'react'
 import {
   BrowserRouter,
-  Redirect,
+  Navigate,
   Route,
-  Switch
+  Routes,
+  useParams
 } from 'react-router-dom'
 import { Layout, message } from 'antd'
 import { FaSpinner } from 'react-icons/fa'
@@ -19,6 +20,34 @@ import { joinUrl } from './utils/url'
 import { User, AuthManager } from './auth'
 import OidcManager from './auth/OidcManager'
 import DicomWebManager from './DicomWebManager'
+
+function ParametrizedCaseViewer ({ client, user, app, config }: {
+  client: DicomWebManager
+  user?: User
+  app: {
+    name: string
+    version: string
+    uid: string
+    organization?: string
+  }
+  config: AppConfig
+}): JSX.Element {
+  const { studyInstanceUID } = useParams()
+
+  const enableAnnotationTools = !(config.disableAnnotationTools ?? false)
+  const preload = config.preload ?? false
+  return (
+    <CaseViewer
+      client={client}
+      user={user}
+      annotations={config.annotations}
+      preload={preload}
+      app={app}
+      enableAnnotationTools={enableAnnotationTools}
+      studyInstanceUID={studyInstanceUID}
+    />
+  )
+}
 
 interface AppProps {
   name: string
@@ -43,6 +72,9 @@ class App extends React.Component<AppProps, AppState> {
     error: dwc.api.DICOMwebClientError,
     serverSettings: ServerSettings
   ): void => {
+    if (error.status === 401) {
+      this.signIn()
+    }
     if (serverSettings.errorMessages !== undefined) {
       serverSettings.errorMessages.forEach(
         ({ status, message }: ErrorMessageSettings) => {
@@ -129,11 +161,18 @@ class App extends React.Component<AppProps, AppState> {
     user: User
     authorization: string
   }): void => {
+    console.info(
+      `handle sign in of user "${user.name}" and ` +
+      `update authorization token "${authorization}"`
+    )
     const client = this.state.client
     client.updateHeaders({ Authorization: authorization })
-    const fullPath = window.location.pathname
+    const fullPath = window.location.pathname + window.location.search
     const basePath = this.props.config.path
-    const path = fullPath.substring(basePath.length - 1)
+    let path = fullPath.substring(basePath.length)
+    if (basePath === '/' || basePath === '') {
+      path = fullPath
+    }
     this.setState({
       user: user,
       client: client,
@@ -143,10 +182,11 @@ class App extends React.Component<AppProps, AppState> {
     })
   }
 
-  componentDidMount (): void {
+  signIn (): void {
     if (this.auth !== undefined) {
+      console.info('try to sign in user')
       this.auth.signIn({ onSignIn: this.handleSignIn }).then(() => {
-        console.info('sign-in successful')
+        console.info('sign-in was successful')
         this.setState({
           isLoading: false,
           redirectTo: undefined,
@@ -155,7 +195,7 @@ class App extends React.Component<AppProps, AppState> {
       }).catch((error) => {
         console.error('sign-in failed ', error)
         // eslint-disable-next-line @typescript-eslint/no-floating-promises
-        message.error('Could not sign-in user')
+        message.error('Could not sign-in user.')
         this.setState({
           isLoading: false,
           redirectTo: undefined,
@@ -171,6 +211,10 @@ class App extends React.Component<AppProps, AppState> {
     }
   }
 
+  componentDidMount (): void {
+    this.signIn()
+  }
+
   render (): React.ReactNode {
     const appInfo = {
       name: this.props.name,
@@ -183,9 +227,6 @@ class App extends React.Component<AppProps, AppState> {
     const enableWorklist = !(
       this.props.config.disableWorklist ?? false
     )
-    const enableAnnotationTools = !(
-      this.props.config.disableAnnotationTools ?? false
-    )
     const enableServerSelection = (
       this.props.config.enableServerSelection ?? false
     )
@@ -197,13 +238,32 @@ class App extends React.Component<AppProps, AppState> {
       worklist = <div>Worklist has been disabled.</div>
     }
 
+    let isLogoutPossible = false
+    let onLogout: () => void
+    if (
+      // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
+      this.props.config.oidc != null &&
+      this.props.config.oidc.endSessionEndpoint != null
+    ) {
+      onLogout = (): void => {
+        if (this.auth != null) {
+          // eslint-disable-next-line @typescript-eslint/no-floating-promises
+          this.auth.signOut()
+        }
+      }
+      isLogoutPossible = true
+    } else {
+      onLogout = () => {}
+      isLogoutPossible = false
+    }
+
     const layoutStyle = { height: '100vh' }
     const layoutContentStyle = { height: '100%' }
 
     if (this.state.redirectTo !== undefined) {
       return (
         <BrowserRouter basename={this.props.config.path}>
-          <Redirect push to={this.state.redirectTo} />
+          <Navigate to={this.state.redirectTo} replace />
         </BrowserRouter>
       )
     } else if (this.state.isLoading) {
@@ -212,6 +272,7 @@ class App extends React.Component<AppProps, AppState> {
           <Layout style={layoutStyle}>
             <Header
               app={appInfo}
+              user={this.state.user}
               showWorklistButton={false}
               onServerSelection={this.handleServerSelection}
               showServerSelectionButton={false}
@@ -224,19 +285,7 @@ class App extends React.Component<AppProps, AppState> {
       )
     } else if (!this.state.wasAuthSuccessful) {
       return (
-        <BrowserRouter basename={this.props.config.path}>
-          <Layout style={layoutStyle}>
-            <Header
-              app={appInfo}
-              showWorklistButton={false}
-              onServerSelection={this.handleServerSelection}
-              showServerSelectionButton={enableServerSelection}
-            />
-            <Layout.Content style={layoutContentStyle}>
-              <div>Sign-in failed.</div>
-            </Layout.Content>
-          </Layout>
-        </BrowserRouter>
+        <InfoPage type='error' message='Sign-in failed.' />
       )
     } else if (this.state.error != null) {
       return (
@@ -245,46 +294,65 @@ class App extends React.Component<AppProps, AppState> {
     } else {
       return (
         <BrowserRouter basename={this.props.config.path}>
-          <Switch>
+          <Routes>
             <Route
-              path='/studies/:StudyInstanceUID'
-              render={(routeProps) => (
+              path='/studies/:studyInstanceUID/*'
+              element={
                 <Layout style={layoutStyle}>
                   <Header
                     app={appInfo}
                     user={this.state.user}
                     showWorklistButton={enableWorklist}
                     onServerSelection={this.handleServerSelection}
+                    onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
                   />
                   <Layout.Content style={layoutContentStyle}>
-                    <CaseViewer
+                    <ParametrizedCaseViewer
                       client={this.state.client}
                       user={this.state.user}
-                      annotations={this.props.config.annotations}
+                      config={this.props.config}
                       app={appInfo}
-                      enableAnnotationTools={enableAnnotationTools}
-                      studyInstanceUID={routeProps.match.params.StudyInstanceUID}
                     />
                   </Layout.Content>
                 </Layout>
-              )}
+              }
             />
-            <Route exact path='/'>
-              <Layout style={layoutStyle}>
-                <Header
-                  app={appInfo}
-                  user={this.state.user}
-                  showWorklistButton={false}
-                  onServerSelection={this.handleServerSelection}
-                  showServerSelectionButton={enableServerSelection}
-                />
-                <Layout.Content style={layoutContentStyle}>
-                  {worklist}
-                </Layout.Content>
-              </Layout>
-            </Route>
-          </Switch>
+            <Route
+              path='/logout'
+              element={
+                <Layout style={layoutStyle}>
+                  <Header
+                    app={appInfo}
+                    user={this.state.user}
+                    showWorklistButton={false}
+                    onServerSelection={this.handleServerSelection}
+                    onUserLogout={isLogoutPossible ? onLogout : undefined}
+                    showServerSelectionButton={enableServerSelection}
+                  />
+                  Logged out
+                </Layout>
+              }
+            />
+            <Route
+              path='/'
+              element={
+                <Layout style={layoutStyle}>
+                  <Header
+                    app={appInfo}
+                    user={this.state.user}
+                    showWorklistButton={false}
+                    onServerSelection={this.handleServerSelection}
+                    onUserLogout={isLogoutPossible ? onLogout : undefined}
+                    showServerSelectionButton={enableServerSelection}
+                  />
+                  <Layout.Content style={layoutContentStyle}>
+                    {worklist}
+                  </Layout.Content>
+                </Layout>
+              }
+            />
+          </Routes>
         </BrowserRouter>
       )
     }
