@@ -9,6 +9,8 @@ declare module 'dicom-microscopy-viewer' {
       client: dwc.api.DICOMwebClient
       metadata: metadata.VLWholeSlideMicroscopyImage[]
       debug?: boolean
+      preload?: boolean
+      controls: string[]
     }
 
     export interface ROIStyleOptions {
@@ -74,9 +76,15 @@ declare module 'dicom-microscopy-viewer' {
       isOpticalPathActive (opticalPathIdentifier: string): boolean
       isOpticalPathColorable (opticalPathIdentifier: string): boolean
       isOpticalPathMonochromatic (opticalPathIdentifier: string): boolean
+      getOpticalPathDefaultStyle (opticalPathIdentifier: string): {
+        color?: number[]
+        paletteColorLookupTable?: color.PaletteColorLookupTable
+        opacity: number
+        limitValues?: number[]
+      }
       getOpticalPathStyle (opticalPathIdentifier: string): {
         color?: number[]
-        paletteColorLookupTable?: color.PaletteColorLookupTableOptions
+        paletteColorLookupTable?: color.PaletteColorLookupTable
         opacity: number
         limitValues?: number[]
       }
@@ -84,6 +92,7 @@ declare module 'dicom-microscopy-viewer' {
         opticalPathIdentifier: string,
         styleOptions: {
           color?: number[]
+          paletteColorLookupTable?: color.PaletteColorLookupTable
           opacity?: number
           limitValues?: number[]
         }
@@ -93,6 +102,7 @@ declare module 'dicom-microscopy-viewer' {
         styleOptions?: {
           color?: number[]
           opacity?: number
+          paletteColorLookupTable?: color.PaletteColorLookupTable
           limitValues?: number[]
         }
       ): void
@@ -117,9 +127,17 @@ declare module 'dicom-microscopy-viewer' {
         segmentUID: string,
         styleOptions: {
           opacity?: number
+          paletteColorLookupTable?: color.PaletteColorLookupTable
         }
       ): void
-      getSegmentStyle (segmentUID: string): { opacity: number }
+      getSegmentDefaultStyle (segmentUID: string): {
+        opacity: number
+        paletteColorLookupTable: color.PaletteColorLookupTable
+      }
+      getSegmentStyle (segmentUID: string): {
+        opacity: number
+        paletteColorLookupTable: color.PaletteColorLookupTable
+      }
       isSegmentVisible (segmentUID: string): boolean
       getSegmentMetadata (segmentUID: string): metadata.Segmentation[]
       getAllSegments (): dwc.segment.Segment[]
@@ -136,10 +154,16 @@ declare module 'dicom-microscopy-viewer' {
         mappingUID: string,
         styleOptions: {
           opacity?: number
+          paletteColorLookupTable?: color.PaletteColorLookupTable
         }
       ): void
+      getParameterMappingDefaultStyle (mappingUID: string): {
+        opacity: number
+        paletteColorLookupTable: color.PaletteColorLookupTable
+      }
       getParameterMappingStyle (mappingUID: string): {
         opacity: number
+        paletteColorLookupTable: color.PaletteColorLookupTable
       }
       isParameterMappingVisible (mappingUID: string): boolean
       getParameterMappingMetadata (mappingUID: string): metadata.ParametricMap[]
@@ -450,6 +474,13 @@ declare module 'dicom-microscopy-viewer' {
       StudyID: string
       StudyDate: string
       StudyTime: string
+      // Clinical Trial Subject module
+      ClinicalTrialSponsorName?: string
+      ClinicalTrialProtocolID?: string
+      ClinicalTrialProtocolName?: string
+      ClinicalTrialSiteName?: string
+      // Clinical Trial Study module
+      ClinicalTrialTimePointID?: string
       // General Series module
       SeriesInstanceUID: string
       SeriesNumber: number | null | undefined
@@ -468,6 +499,8 @@ declare module 'dicom-microscopy-viewer' {
       ImageType: string[]
       SamplesPerPixel: number
       PhotometricInterpretation: string
+      // Acquisition
+      AcquisitionUID?: string
       // Frame of Reference module
       FrameOfReferenceUID: string
       // Specimen module
@@ -476,6 +509,12 @@ declare module 'dicom-microscopy-viewer' {
       SpecimenDescriptionSequence: SpecimenDescription[]
       // Optical Path module
       OpticalPathSequence: OpticalPath[]
+      // Equipment module
+      Manufacturer: string
+      ManufacturerModelName: string
+      DeviceSerialNumber: string
+      SoftwareVersions: string | string[]
+      InstitutionName?: string
     }
 
     export interface Comprehensive3DSR extends SOPClass {
@@ -581,6 +620,55 @@ declare module 'dicom-microscopy-viewer' {
       }>
     }
 
+    export interface AdvancedBlendingPresentationState extends SOPClass {
+      AdvancedBlendingSequence: Array<{
+        BlendingInputNumber: number
+        // FIXME
+        ReferencedImageSequence?: Array<{
+          ReferencedSOPClassUID: string
+          ReferencedSOPInstanceUID: string
+        }>
+        ReferencedInstanceSequence?: Array<{
+          ReferencedSOPClassUID: string
+          ReferencedSOPInstanceUID: string
+        }>
+        PaletteColorLookupTableSequence: Array<{
+          RedPaletteColorLookupTableDescriptor: number[]
+          GreenPaletteColorLookupTableDescriptor: number[]
+          BluePaletteColorLookupTableDescriptor: number[]
+          RedPaletteColorLookupTableData?: Uint16Array
+          GreenPaletteColorLookupTableData?: Uint16Array
+          BluePaletteColorLookupTableData?: Uint16Array
+          SegmentedRedPaletteColorLookupTableData?: Uint16Array
+          SegmentedGreenPaletteColorLookupTableData?: Uint16Array
+          SegmentedBluePaletteColorLookupTableData?: Uint16Array
+          PaletteColorLookupTableUID?: string
+        }>
+        SoftcopyVOILUTSequence: Array<{
+          WindowCenter: number
+          WindowWidth: number
+        }>
+        StudyInstanceUID: string
+        SeriesInstanceUID: string
+      }>
+      BlendingDisplaySequence: Array<{
+        BlendingDisplayInputSequence: Array<{
+          BlendingInputNumber: number
+        }>
+        BlendingMode: string
+      }>
+      ContentLabel: string
+      ContentCreatorName: string
+      ContentDescription?: string
+      ReferencedSeriesSequence: Array<{
+        SeriesInstanceUID: string
+        ReferencedInstanceSequence: Array<{
+          ReferencedSOPClassUID: string
+          ReferencedSOPInstanceUID: string
+        }>
+      }>
+    }
+
     export function formatMetadata (metadata: object): {
       dataset: Dataset
       bulkDataMapping: { [keyword: string]: { vr: string, BulkDataURI: string }}
@@ -648,12 +736,12 @@ declare module 'dicom-microscopy-viewer' {
       redDescriptor: number[]
       greenDescriptor: number[]
       blueDescriptor: number[]
-      redData: number[]
-      greenData: number[]
-      blueData: number[]
-      redSegmentedData: number[]
-      greenSegmentedData: number[]
-      blueSegmentedDat: number[]
+      redData?: Unit8Array|Unit16Array
+      greenData?: Unit8Array|Unit16Array
+      blueData?: Unit8Array|Unit16Array
+      redSegmentedData?: Unit8Array|Unit16Array
+      greenSegmentedData?: Unit8Array|Unit16Array
+      blueSegmentedData?: Unit8Array|Unit16Array
     }
 
     export class PaletteColorLookupTable {
@@ -690,6 +778,7 @@ declare module 'dicom-microscopy-viewer' {
       get sopInstanceUIDs (): string[]
       get isMonochromatic (): boolean
       get isColorable (): boolean
+      get paletteColorLookupTableUID (): string
     }
   }
 

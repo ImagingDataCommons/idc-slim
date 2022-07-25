@@ -1,9 +1,9 @@
 import React from 'react'
 import {
-  Switch,
+  Routes,
   Route,
-  RouteComponentProps,
-  withRouter
+  useLocation,
+  useParams
 } from 'react-router-dom'
 import {
   Layout,
@@ -14,14 +14,72 @@ import {
 import * as dmv from 'dicom-microscopy-viewer'
 
 import { AnnotationSettings } from '../AppConfig'
+import ClinicalTrial from './ClinicalTrial'
 import DicomWebManager from '../DicomWebManager'
 import Patient from './Patient'
 import Study from './Study'
 import SlideList from './SlideList'
 import SlideViewer from './SlideViewer'
 
+import { User } from '../auth'
 import { Slide, createSlides } from '../data/slides'
 import { SOPClassUIDs } from '../data/uids'
+import { RouteComponentProps, withRouter } from '../utils/router'
+
+function ParametrizedSlideViewer ({
+  client,
+  slides,
+  user,
+  app,
+  preload,
+  enableAnnotationTools,
+  annotations
+}: {
+  client: DicomWebManager
+  slides: Slide[]
+  user?: User
+  app: {
+    name: string
+    version: string
+    uid: string
+    organization?: string
+  }
+  preload: boolean
+  enableAnnotationTools: boolean
+  annotations: AnnotationSettings[]
+}): JSX.Element | null {
+  const { studyInstanceUID, seriesInstanceUID } = useParams()
+  const location = useLocation()
+
+  const selectedSlide = slides.find((slide: Slide) => {
+    return slide.seriesInstanceUIDs.find((uid: string) => {
+      return uid === seriesInstanceUID
+    })
+  })
+  const searchParams = new URLSearchParams(location.search)
+  let presentationStateUID: string|null|undefined = searchParams.get('state')
+  if (presentationStateUID === null) {
+    presentationStateUID = undefined
+  }
+  let viewer = null
+  if (selectedSlide != null) {
+    viewer = (
+      <SlideViewer
+        client={client}
+        studyInstanceUID={studyInstanceUID}
+        seriesInstanceUID={seriesInstanceUID}
+        selectedPresentationStateUID={presentationStateUID}
+        slide={selectedSlide}
+        preload={preload}
+        annotations={annotations}
+        enableAnnotationTools={enableAnnotationTools}
+        app={app}
+        user={user}
+      />
+    )
+  }
+  return viewer
+}
 
 interface ViewerProps extends RouteComponentProps {
   client: DicomWebManager
@@ -34,6 +92,7 @@ interface ViewerProps extends RouteComponentProps {
   }
   annotations: AnnotationSettings[]
   enableAnnotationTools: boolean
+  preload: boolean
   user?: {
     name: string
     email: string
@@ -105,13 +164,16 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
 
       const seriesImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
       retrievedMetadata.forEach((item, index) => {
-        if (item['00080016'] !== undefined) {
-          const sopClassUID = item['00080016'].Value[0]
-          if (sopClassUID === SOPClassUIDs.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE) {
-            const image = new dmv.metadata.VLWholeSlideMicroscopyImage({
-              metadata: item
-            })
-            seriesImages.push(image)
+        if (item['00080016'] != null) {
+          const values = item['00080016'].Value
+          if (values != null) {
+            const sopClassUID = values[0]
+            if (sopClassUID === SOPClassUIDs.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE) {
+              const image = new dmv.metadata.VLWholeSlideMicroscopyImage({
+                metadata: item
+              })
+              seriesImages.push(image)
+            }
           }
         }
       })
@@ -128,9 +190,17 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
     { seriesInstanceUID }: { seriesInstanceUID: string }
   ): void {
     console.info(`switch to series "${seriesInstanceUID}"`)
-    this.props.history.push(
-      `/studies/${this.props.studyInstanceUID}/series/${seriesInstanceUID}`
+    let urlPath = (
+      `/studies/${this.props.studyInstanceUID}` +
+      `/series/${seriesInstanceUID}`
     )
+    if (
+      this.props.location.pathname.includes('/series/') &&
+      this.props.location.search != null
+    ) {
+      urlPath += this.props.location.search
+    }
+    this.props.navigate(urlPath, { replace: true })
   }
 
   render (): React.ReactNode {
@@ -156,6 +226,15 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
       selectedSeriesInstanceUID = volumeInstances[0].SeriesInstanceUID
     }
 
+    let clinicalTrialMenu
+    if (refImage.ClinicalTrialSponsorName != null) {
+      clinicalTrialMenu = (
+        <Menu.SubMenu key='clinical-trial' title='Clinical Trial'>
+          <ClinicalTrial metadata={refImage} />
+        </Menu.SubMenu>
+      )
+    }
+
     return (
       <Layout style={{ height: '100%' }} hasSider>
         <Layout.Sider
@@ -170,16 +249,17 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
         >
           <Menu
             mode='inline'
-            defaultOpenKeys={['patient', 'case', 'slides']}
+            defaultOpenKeys={['patient', 'study', 'clinical-trial', 'slides']}
             style={{ height: '100%' }}
             inlineIndent={14}
           >
             <Menu.SubMenu key='patient' title='Patient'>
               <Patient metadata={refImage} />
             </Menu.SubMenu>
-            <Menu.SubMenu key='case' title='Case'>
+            <Menu.SubMenu key='study' title='Study'>
               <Study metadata={refImage} />
             </Menu.SubMenu>
+            {clinicalTrialMenu}
             <Menu.SubMenu key='slides' title='Slides'>
               <SlideList
                 client={this.props.client}
@@ -191,35 +271,22 @@ class Viewer extends React.Component<ViewerProps, ViewerState> {
           </Menu>
         </Layout.Sider>
 
-        <Switch>
+        <Routes>
           <Route
-            exact
-            path='/studies/:StudyInstanceUID/series/:SeriesInstanceUID'
-            render={(routeProps) => {
-              const selectedSlide = this.state.slides.find((slide: Slide) => {
-                return slide.seriesInstanceUIDs.find((uid: string) => {
-                  return uid === routeProps.match.params.SeriesInstanceUID
-                })
-              })
-              let viewer = null
-              if (selectedSlide != null) {
-                viewer = (
-                  <SlideViewer
-                    client={this.props.client}
-                    studyInstanceUID={this.props.studyInstanceUID}
-                    seriesInstanceUID={routeProps.match.params.SeriesInstanceUID}
-                    slide={selectedSlide}
-                    annotations={this.props.annotations}
-                    enableAnnotationTools={this.props.enableAnnotationTools}
-                    app={this.props.app}
-                    user={this.props.user}
-                  />
-                )
-              }
-              return viewer
-            }}
+            path='/series/:seriesInstanceUID'
+            element={
+              <ParametrizedSlideViewer
+                client={this.props.client}
+                slides={this.state.slides}
+                preload={this.props.preload}
+                annotations={this.props.annotations}
+                enableAnnotationTools={this.props.enableAnnotationTools}
+                app={this.props.app}
+                user={this.props.user}
+              />
+            }
           />
-        </Switch>
+        </Routes>
       </Layout>
     )
   }
