@@ -60,7 +60,7 @@ class MappingItem extends React.Component<MappingItemProps, MappingItemState> {
 
   handleVisibilityChange (
     checked: boolean,
-    event: Event
+    event: React.MouseEvent<HTMLButtonElement>
   ): void {
     this.props.onVisibilityChange({
       mappingUID: this.props.mapping.uid,
@@ -84,11 +84,10 @@ class MappingItem extends React.Component<MappingItemProps, MappingItemState> {
   }
 
   render (): React.ReactNode {
-    const identifier = `Mapping ${this.props.mapping.number}`
     const attributes: Array<{ name: string, value: string }> = [
       {
-        name: 'Label',
-        value: this.props.mapping.label
+        name: 'Description',
+        value: this.props.mapping.description
       }
     ]
 
@@ -169,7 +168,7 @@ class MappingItem extends React.Component<MappingItemProps, MappingItemState> {
             </Space>
           </div>
           <Description
-            header={identifier}
+            header={this.props.mapping.label}
             attributes={attributes}
             selectable
             hasLongValues

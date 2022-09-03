@@ -58,7 +58,7 @@ class SegmentItem extends React.Component<SegmentItemProps, SegmentItemState> {
 
   handleVisibilityChange (
     checked: boolean,
-    event: Event
+    event: React.MouseEvent<HTMLButtonElement>
   ): void {
     this.props.onVisibilityChange({
       segmentUID: this.props.segment.uid,
@@ -80,12 +80,12 @@ class SegmentItem extends React.Component<SegmentItemProps, SegmentItemState> {
   render (): React.ReactNode {
     const attributes: Array<{ name: string, value: string }> = [
       {
-        name: 'Property Category',
-        value: this.props.segment.propertyCategory.CodeMeaning
-      },
-      {
         name: 'Property Type',
         value: this.props.segment.propertyType.CodeMeaning
+      },
+      {
+        name: 'Property Category',
+        value: this.props.segment.propertyCategory.CodeMeaning
       },
       {
         name: 'Algorithm Name',
