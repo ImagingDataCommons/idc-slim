@@ -21,12 +21,31 @@ declare module 'dicom-microscopy-viewer' {
       fill?: {
         color: number[]
       }
+      image?: {
+        circle?: {
+          radius?: number
+          stroke?: {
+            color: number[]
+            width?: number
+          }
+          fill?: {
+            color: number[]
+          }
+        }
+      }
     }
 
     export class VolumeImageViewer {
       constructor (options: VolumeImageViewerOptions)
       render (options: object): void
+      navigate (options: { level?: number, position?: number[] })
       cleanup (): void
+      get numLevels(): number
+      get frameOfReferenceUID(): string
+      getPixelSpacing (level: number): number[]
+      get physicalOffset (): number[]
+      get physicalSize (): number[]
+      get boundingBox (): number[][]
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       activateDrawInteraction (options: object)
       deactivateDrawInteraction (): void
@@ -70,6 +89,7 @@ declare module 'dicom-microscopy-viewer' {
       showROIs (): void
       get areROIsVisible (): boolean
       resize (): void
+      get size (): number[]
       collapseOverviewMap (): void
       expandOverviewMap (): void
       toggleOverviewMap (): void
@@ -208,6 +228,7 @@ declare module 'dicom-microscopy-viewer' {
       cleanup (): void
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       resize (): void
+      get size (): number[]
     }
 
     export interface LabelImageViewerOptions {
@@ -224,6 +245,7 @@ declare module 'dicom-microscopy-viewer' {
       cleanup (): void
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       resize (): void
+      get size (): number[]
     }
   }
 
@@ -308,7 +330,7 @@ declare module 'dicom-microscopy-viewer' {
 
     export interface ROIOptions {
       scoord3d: scoord3d.Scoord3D
-      uid: string
+      uid?: string
       properties?: {
         trackingUID?: string
         observerType?: string
@@ -723,6 +745,7 @@ declare module 'dicom-microscopy-viewer' {
       get uid (): string
       get number (): number
       get label (): string
+      get description (): string
       get studyInstanceUID (): string
       get seriesInstanceUID (): string
       get sopInstanceUIDs (): string[]
