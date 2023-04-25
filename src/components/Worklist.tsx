@@ -1,12 +1,5 @@
 import React from 'react'
-import {
-  Button,
-  Input,
-  message,
-  Space,
-  Table,
-  TablePaginationConfig
-} from 'antd'
+import { Button, Input, Space, Table, TablePaginationConfig } from 'antd'
 import { ColumnsType } from 'antd/es/table'
 import { FilterConfirmProps } from 'antd/es/table/interface'
 import { SearchOutlined } from '@ant-design/icons'
@@ -14,11 +7,16 @@ import DicomWebManager from '../DicomWebManager'
 
 import * as dmv from 'dicom-microscopy-viewer'
 
+import { StorageClasses } from '../data/uids'
 import { withRouter, RouteComponentProps } from '../utils/router'
 import { parseDate, parseName, parseSex, parseTime } from '../utils/values'
+import { CustomError, errorTypes } from '../utils/CustomError'
+import NotificationMiddleware, {
+  NotificationMiddlewareContext
+} from '../services/NotificationMiddleware'
 
 interface WorklistProps extends RouteComponentProps {
-  client: DicomWebManager
+  clients: { [key: string]: DicomWebManager }
 }
 
 interface WorklistState {
@@ -48,19 +46,28 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
     const queryParams: { [key: string]: any } = { ModalitiesInStudy: 'SM' }
     const searchOptions = { queryParams }
     // TODO: retrieve remaining results
-    this.props.client.searchForStudies(searchOptions).then((studies) => {
+    const client = this.props.clients[
+      StorageClasses.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE
+    ]
+    client.searchForStudies(searchOptions).then((studies) => {
       this.setState({
         numStudies: studies.length,
-        studies: studies.slice(0, this.state.pageSize).map((study) => {
+        studies: studies.slice(0, this.state.pageSize).map(study => {
           const { dataset } = dmv.metadata.formatMetadata(study)
           return dataset as dmv.metadata.Study
         })
       })
-    }).catch((error) => {
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      message.error('An error occured. Search for studies failed.')
-      console.error(error)
     })
+      .catch(() => {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.DICOMWEB,
+          new CustomError(
+            errorTypes.COMMUNICATION,
+            'An error occured. Search for studies failed.'
+          )
+        )
+      })
   }
 
   componentDidMount (): void {
@@ -68,7 +75,7 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
   }
 
   componentDidUpdate (previousProps: WorklistProps): void {
-    if (this.props.client !== previousProps.client) {
+    if (this.props.clients !== previousProps.clients) {
       this.searchForStudies()
     }
   }
@@ -99,14 +106,26 @@ class Worklist extends React.Component<WorklistProps, WorklistState> {
       queryParams.fuzzymatching = 'true'
     }
     const searchOptions = { queryParams }
-    this.props.client.searchForStudies(searchOptions).then((studies) => {
+    const client = this.props.clients[
+      StorageClasses.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE
+    ]
+    client.searchForStudies(searchOptions).then((studies) => {
       this.setState({
-        studies: studies.map((study) => {
+        studies: studies.map(study => {
           const { dataset } = dmv.metadata.formatMetadata(study)
           return dataset as dmv.metadata.Study
         })
       })
-    }).catch(() => message.error('Request to search for studies failed.'))
+    })
+      .catch(() => {
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.DICOMWEB,
+          new CustomError(
+            errorTypes.COMMUNICATION,
+            'Request to search for studies failed.'
+          )
+        )
+      })
   }
 
   handleChange (
