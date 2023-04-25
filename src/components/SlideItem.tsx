@@ -6,9 +6,14 @@ import { Menu } from 'antd'
 import DicomWebManager from '../DicomWebManager'
 import Description from './Description'
 import { Slide } from '../data/slides'
+import { StorageClasses } from '../data/uids'
+import NotificationMiddleware, {
+  NotificationMiddlewareContext
+} from '../services/NotificationMiddleware'
+import { CustomError } from '../utils/CustomError'
 
 interface SlideItemProps {
-  client: DicomWebManager
+  clients: { [key: string]: DicomWebManager }
   slide: Slide
 }
 
@@ -46,9 +51,16 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
           `"${metadata.ContainerIdentifier}"`
         )
         this.overviewViewer = new dmv.viewer.OverviewImageViewer({
-          client: this.props.client,
+          client: this.props.clients[
+            StorageClasses.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE
+          ],
           metadata: metadata,
-          resizeFactor: 1
+          resizeFactor: 1,
+          errorInterceptor: (error: CustomError) =>
+            NotificationMiddleware.onError(
+              NotificationMiddlewareContext.DMV,
+              error
+            )
         })
         this.overviewViewer.render({
           container: this.overviewViewportRef.current

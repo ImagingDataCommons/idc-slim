@@ -2,15 +2,18 @@ declare module 'dicom-microscopy-viewer' {
 
   import * as dwc from 'dicomweb-client'
   import * as dcmjs from 'dcmjs'
+  import { CustomError } from '../../src/utils/CustomError'
 
   declare namespace viewer {
 
     export interface VolumeImageViewerOptions {
-      client: dwc.api.DICOMwebClient
+      client?: dwc.api.DICOMwebClient
+      clientMapping?: { [key: string]: dwc.api.DICOMwebClient }
       metadata: metadata.VLWholeSlideMicroscopyImage[]
       debug?: boolean
       preload?: boolean
       controls: string[]
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export interface ROIStyleOptions {
@@ -195,7 +198,8 @@ declare module 'dicom-microscopy-viewer' {
       showAnnotationGroup (
         annotationGroupUID: string,
         styleOptions?: {
-          opacity?: number
+          opacity?: number,
+          color?: number[],
           measurement?: dcmjs.sr.coding.CodedConcept
         }
       ): void
@@ -203,10 +207,15 @@ declare module 'dicom-microscopy-viewer' {
       setAnnotationGroupStyle (
         annotationGroupUID: string,
         styleOptions: {
-          opacity?: number
+          opacity?: number,
+          color?: number[],
+          measurement?: dcmjs.sr.coding.CodedConcept
         }
       ): void
-      getAnnotationGroupStyle (annotationGroupUID: string): { opacity: number }
+      getAnnotationGroupStyle (annotationGroupUID: string): {
+        opacity: number,
+        color: number[]
+      }
       isAnnotationGroupVisible (annotationGroupUID: string): boolean
       getAllAnnotationGroups (): dwc.annotation.AnnotationGroup[]
       getAnnotationGroupMetadata (
@@ -220,6 +229,7 @@ declare module 'dicom-microscopy-viewer' {
       orientation?: string
       resizeFactor?: number
       includeIccProfile?: boolean
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export class OverviewImageViewer {
@@ -237,6 +247,7 @@ declare module 'dicom-microscopy-viewer' {
       orientation?: string
       resizeFactor?: number
       includeIccProfile?: boolean
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export class LabelImageViewer {
@@ -523,6 +534,8 @@ declare module 'dicom-microscopy-viewer' {
       PhotometricInterpretation: string
       // Acquisition
       AcquisitionUID?: string
+      // Multi-Resolution Pyramid
+      PyramidUID?: string
       // Frame of Reference module
       FrameOfReferenceUID: string
       // Specimen module
