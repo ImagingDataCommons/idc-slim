@@ -2,15 +2,18 @@ declare module 'dicom-microscopy-viewer' {
 
   import * as dwc from 'dicomweb-client'
   import * as dcmjs from 'dcmjs'
+  import { CustomError } from '../../src/utils/CustomError'
 
   declare namespace viewer {
 
     export interface VolumeImageViewerOptions {
-      client: dwc.api.DICOMwebClient
+      client?: dwc.api.DICOMwebClient
+      clientMapping?: { [key: string]: dwc.api.DICOMwebClient }
       metadata: metadata.VLWholeSlideMicroscopyImage[]
       debug?: boolean
       preload?: boolean
       controls: string[]
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export interface ROIStyleOptions {
@@ -21,12 +24,31 @@ declare module 'dicom-microscopy-viewer' {
       fill?: {
         color: number[]
       }
+      image?: {
+        circle?: {
+          radius?: number
+          stroke?: {
+            color: number[]
+            width?: number
+          }
+          fill?: {
+            color: number[]
+          }
+        }
+      }
     }
 
     export class VolumeImageViewer {
       constructor (options: VolumeImageViewerOptions)
       render (options: object): void
+      navigate (options: { level?: number, position?: number[] })
       cleanup (): void
+      get numLevels(): number
+      get frameOfReferenceUID(): string
+      getPixelSpacing (level: number): number[]
+      get physicalOffset (): number[]
+      get physicalSize (): number[]
+      get boundingBox (): number[][]
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       activateDrawInteraction (options: object)
       deactivateDrawInteraction (): void
@@ -70,6 +92,7 @@ declare module 'dicom-microscopy-viewer' {
       showROIs (): void
       get areROIsVisible (): boolean
       resize (): void
+      get size (): number[]
       collapseOverviewMap (): void
       expandOverviewMap (): void
       toggleOverviewMap (): void
@@ -175,7 +198,8 @@ declare module 'dicom-microscopy-viewer' {
       showAnnotationGroup (
         annotationGroupUID: string,
         styleOptions?: {
-          opacity?: number
+          opacity?: number,
+          color?: number[],
           measurement?: dcmjs.sr.coding.CodedConcept
         }
       ): void
@@ -183,10 +207,15 @@ declare module 'dicom-microscopy-viewer' {
       setAnnotationGroupStyle (
         annotationGroupUID: string,
         styleOptions: {
-          opacity?: number
+          opacity?: number,
+          color?: number[],
+          measurement?: dcmjs.sr.coding.CodedConcept
         }
       ): void
-      getAnnotationGroupStyle (annotationGroupUID: string): { opacity: number }
+      getAnnotationGroupStyle (annotationGroupUID: string): {
+        opacity: number,
+        color: number[]
+      }
       isAnnotationGroupVisible (annotationGroupUID: string): boolean
       getAllAnnotationGroups (): dwc.annotation.AnnotationGroup[]
       getAnnotationGroupMetadata (
@@ -200,6 +229,7 @@ declare module 'dicom-microscopy-viewer' {
       orientation?: string
       resizeFactor?: number
       includeIccProfile?: boolean
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export class OverviewImageViewer {
@@ -208,6 +238,7 @@ declare module 'dicom-microscopy-viewer' {
       cleanup (): void
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       resize (): void
+      get size (): number[]
     }
 
     export interface LabelImageViewerOptions {
@@ -216,6 +247,7 @@ declare module 'dicom-microscopy-viewer' {
       orientation?: string
       resizeFactor?: number
       includeIccProfile?: boolean
+      errorInterceptor?: (error: CustomError) => void
     }
 
     export class LabelImageViewer {
@@ -224,6 +256,7 @@ declare module 'dicom-microscopy-viewer' {
       cleanup (): void
       get imageMetadata (): metadata.VLWholeSlideMicroscopyImage[]
       resize (): void
+      get size (): number[]
     }
   }
 
@@ -308,7 +341,7 @@ declare module 'dicom-microscopy-viewer' {
 
     export interface ROIOptions {
       scoord3d: scoord3d.Scoord3D
-      uid: string
+      uid?: string
       properties?: {
         trackingUID?: string
         observerType?: string
@@ -501,6 +534,8 @@ declare module 'dicom-microscopy-viewer' {
       PhotometricInterpretation: string
       // Acquisition
       AcquisitionUID?: string
+      // Multi-Resolution Pyramid
+      PyramidUID?: string
       // Frame of Reference module
       FrameOfReferenceUID: string
       // Specimen module
@@ -723,6 +758,7 @@ declare module 'dicom-microscopy-viewer' {
       get uid (): string
       get number (): number
       get label (): string
+      get description (): string
       get studyInstanceUID (): string
       get seriesInstanceUID (): string
       get sopInstanceUIDs (): string[]

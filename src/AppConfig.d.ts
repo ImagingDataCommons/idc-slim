@@ -43,6 +43,7 @@ export interface AnnotationSettings {
     fill: {
       color: number[]
     }
+    radius?: number
   }
 }
 
@@ -62,6 +63,7 @@ export interface ServerSettings {
   stowPathPrefix?: string
   retry?: RetryRequestSettings
   errorMessages?: ErrorMessageSettings[]
+  storageClasses?: string[]
 }
 
 export interface OidcSettings {
