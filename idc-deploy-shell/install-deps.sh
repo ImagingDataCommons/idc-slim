@@ -37,7 +37,7 @@ apt-get install -y --no-install-suggests --no-install-recommends apt-transport-h
 
 apt-get clean
 
-curl -sL https://deb.nodesource.com/setup_14.x | bash -
+curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
 # See https://github.com/Joystream/helpdesk/issues/16
