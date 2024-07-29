@@ -1,6 +1,6 @@
 {
   "name": "slim",
-  "version": "0.31.3",
+  "version": "0.31.4",
   "homepage": "https://github.com/imagingdatacommons/slim",
   "private": true,
   "author": "ImagingDataCommons",
@@ -76,6 +76,7 @@
     "react-error-boundary": "^3.1.4"
   },
   "resolutions": {
-    "nth-check": "2.0.1"
+    "nth-check": "2.0.1",
+    "wrap-ansi": "7.0.0"
   }
 }
