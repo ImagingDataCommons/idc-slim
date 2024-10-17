@@ -1,81 +1,81 @@
-import React, { useCallback, useState } from "react";
-import { PaperClipOutlined } from "@ant-design/icons";
+import React, { useCallback, useState } from 'react'
+import { PaperClipOutlined } from '@ant-design/icons'
 
 const getConfig = () => {
   const defaultConfig = {
     description:
-      "Follow the instructions below to download the study or series:",
+      'Follow the instructions below to download the study or series:',
     instructions: [
       {
-        command: "pip install idc-index --upgrade",
-        label: "First, install the idc-index python package:",
+        command: 'pip install idc-index --upgrade',
+        label: 'First, install the idc-index python package:'
       },
       {
-        command: `idc download {{StudyInstanceUID}}`,
-        label: "Then, to download the whole study, run:",
+        command: 'idc download {{StudyInstanceUID}}',
+        label: 'Then, to download the whole study, run:'
       },
       {
-        command: `idc download {{SeriesInstanceUID}}`,
-        label: "Or, to download just the active viewport's series, run:",
-      },
-    ],
-  };
+        command: 'idc download {{SeriesInstanceUID}}',
+        label: "Or, to download just the active viewport's series, run:"
+      }
+    ]
+  }
 
-  return defaultConfig;
-};
+  return defaultConfig
+}
 
 const DialogInstruction = ({
-  instruction,
+  instruction
 }: {
-  instruction: { command: string; label: string };
+  instruction: { command: string, label: string }
 }) => {
-  const [message, setMessage] = useState("");
-  const { command, label } = instruction;
+  const [message, setMessage] = useState('')
+  const { command, label } = instruction
 
   const copyToClipboard = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(command);
-      setMessage("Copied");
+      await navigator.clipboard.writeText(command)
+      setMessage('Copied')
     } catch (err) {
-      console.error("Failed to copy: ", err);
-      setMessage("Failed");
+      console.error('Failed to copy: ', err)
+      setMessage('Failed')
     } finally {
       setTimeout(() => {
-        resetState();
-      }, 500);
+        resetState()
+      }, 500)
     }
-  }, [command]);
+  }, [command])
 
   const resetState = () => {
-    setMessage("");
-  };
+    setMessage('')
+  }
 
   return (
     <div>
       {label ? <section>{label}</section> : <></>}
       <section
         style={{
-          margin: "1rem 0",
-          padding: "0.25rem 0.5rem",
-          display: "flex",
-          flexDirection: "row",
-          justifyContent: "space-between",
-          backgroundColor: "#EFFBFE",
-          alignItems: "center",
+          margin: '1rem 0',
+          padding: '0.25rem 0.5rem',
+          display: 'flex',
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          backgroundColor: '#EFFBFE',
+          alignItems: 'center'
         }}
       >
         {command}
         <div
           style={{
-            position: "relative",
-            display: "flex",
-            height: "2rem",
-            alignItems: "center",
+            position: 'relative',
+            display: 'flex',
+            height: '2rem',
+            alignItems: 'center'
           }}
         >
           {message || (
             <>
-              <div style={{ cursor: "pointer" }} onClick={copyToClipboard}>
+              <div style={{ cursor: 'pointer' }} onClick={copyToClipboard}>
                 <PaperClipOutlined />
               </div>
             </>
@@ -83,45 +83,45 @@ const DialogInstruction = ({
         </div>
       </section>
     </div>
-  );
-};
+  )
+}
 
 const getStudyAndSeriesInfo = () => {
-  const urlParams = window.location.pathname.split("/");
-  const studiesIndex = urlParams.findIndex((param) => param === "studies");
-  const seriesIndex = urlParams.findIndex((param) => param === "series");
-  const studyInstanceUID = urlParams[studiesIndex + 1];
-  const seriesInstanceUID = urlParams[seriesIndex + 1];
+  const urlParams = window.location.pathname.split('/')
+  const studiesIndex = urlParams.findIndex((param) => param === 'studies')
+  const seriesIndex = urlParams.findIndex((param) => param === 'series')
+  const studyInstanceUID = urlParams[studiesIndex + 1]
+  const seriesInstanceUID = urlParams[seriesIndex + 1]
 
-  return { studyInstanceUID, seriesInstanceUID };
-};
+  return { studyInstanceUID, seriesInstanceUID }
+}
 
 const DownloadStudySeriesDialog = () => {
-  const { studyInstanceUID, seriesInstanceUID } = getStudyAndSeriesInfo();
-  const config = getConfig();
+  const { studyInstanceUID, seriesInstanceUID } = getStudyAndSeriesInfo()
+  const config = getConfig()
 
   const replaceVariables = useCallback(
     (text: string) =>
       text
-        .replace(/\{\{StudyInstanceUID\}\}/g, studyInstanceUID || "")
-        .replace(/\{\{SeriesInstanceUID\}\}/g, seriesInstanceUID || ""),
+        .replace(/\{\{StudyInstanceUID\}\}/g, studyInstanceUID || '')
+        .replace(/\{\{SeriesInstanceUID\}\}/g, seriesInstanceUID || ''),
     [studyInstanceUID, seriesInstanceUID]
-  );
+  )
 
   const instructions = config.instructions.map((instruction) => {
-    const { command, label } = instruction;
+    const { command, label } = instruction
     return {
       command: replaceVariables(command),
-      label: replaceVariables(label),
-    };
-  });
+      label: replaceVariables(label)
+    }
+  })
 
   return (
-    <div style={{ width: "850px" }}>
+    <div style={{ width: '850px' }}>
       <h1>{config.description}</h1>
       <div
-        style={{ marginTop: "0.5rem", padding: "0.5rem" }}
-        className="mt-2 p-2"
+        style={{ marginTop: '0.5rem', padding: '0.5rem' }}
+        className='mt-2 p-2'
       >
         {instructions.map((instruction) => (
           <DialogInstruction
@@ -131,7 +131,7 @@ const DownloadStudySeriesDialog = () => {
         ))}
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default DownloadStudySeriesDialog;
+export default DownloadStudySeriesDialog

@@ -21,7 +21,7 @@ import {
   UnorderedListOutlined,
   UserOutlined,
   SettingOutlined,
-  CloudDownloadOutlined,
+  CloudDownloadOutlined
 } from '@ant-design/icons'
 import { detect } from 'detect-browser'
 
@@ -282,15 +282,14 @@ class Header extends React.Component<HeaderProps, HeaderState> {
 
   handleDownloadButtonClick = (): void => {
     Modal.info({
-      title: "Download Study or Series",
+      title: 'Download Study or Series',
       width: 1000,
       content: (
         <DownloadStudySeriesDialog />
       ),
-      onOk(): void {},
-    });
+      onOk (): void {}
+    })
   }
-
 
   render (): React.ReactNode {
     let user = null
