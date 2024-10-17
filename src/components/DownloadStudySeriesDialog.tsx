@@ -1,7 +1,13 @@
 import React, { useCallback, useState } from 'react'
 import { PaperClipOutlined } from '@ant-design/icons'
 
-const getConfig = () => {
+const getConfig = (): {
+  description: string
+  instructions: Array<{
+    command: string
+    label: string
+  }>
+} => {
   const defaultConfig = {
     description:
       'Follow the instructions below to download the study or series:',
@@ -28,7 +34,7 @@ const DialogInstruction = ({
   instruction
 }: {
   instruction: { command: string, label: string }
-}) => {
+}): JSX.Element => {
   const [message, setMessage] = useState('')
   const { command, label } = instruction
 
@@ -40,19 +46,19 @@ const DialogInstruction = ({
       console.error('Failed to copy: ', err)
       setMessage('Failed')
     } finally {
-      setTimeout(() => {
+      setTimeout((): void => {
         resetState()
       }, 500)
     }
   }, [command])
 
-  const resetState = () => {
+  const resetState = (): void => {
     setMessage('')
   }
 
   return (
     <div>
-      {label ? <section>{label}</section> : <></>}
+      {typeof label === 'string' ? <section>{label}</section> : <></>}
       <section
         style={{
           margin: '1rem 0',
@@ -73,20 +79,25 @@ const DialogInstruction = ({
             alignItems: 'center'
           }}
         >
-          {message || (
-            <>
-              <div style={{ cursor: 'pointer' }} onClick={copyToClipboard}>
-                <PaperClipOutlined />
-              </div>
-            </>
-          )}
+          {message !== ''
+            ? message
+            : (
+              <>
+                <div style={{ cursor: 'pointer' }} onClick={copyToClipboard}>
+                  <PaperClipOutlined />
+                </div>
+              </>
+              )}
         </div>
       </section>
     </div>
   )
 }
 
-const getStudyAndSeriesInfo = () => {
+const getStudyAndSeriesInfo = (): {
+  studyInstanceUID: string
+  seriesInstanceUID: string
+} => {
   const urlParams = window.location.pathname.split('/')
   const studiesIndex = urlParams.findIndex((param) => param === 'studies')
   const seriesIndex = urlParams.findIndex((param) => param === 'series')
@@ -96,15 +107,15 @@ const getStudyAndSeriesInfo = () => {
   return { studyInstanceUID, seriesInstanceUID }
 }
 
-const DownloadStudySeriesDialog = () => {
+const DownloadStudySeriesDialog = (): JSX.Element => {
   const { studyInstanceUID, seriesInstanceUID } = getStudyAndSeriesInfo()
   const config = getConfig()
 
   const replaceVariables = useCallback(
-    (text: string) =>
+    (text: string): string =>
       text
-        .replace(/\{\{StudyInstanceUID\}\}/g, studyInstanceUID || '')
-        .replace(/\{\{SeriesInstanceUID\}\}/g, seriesInstanceUID || ''),
+        .replace(/\{\{StudyInstanceUID\}\}/g, studyInstanceUID)
+        .replace(/\{\{SeriesInstanceUID\}\}/g, seriesInstanceUID),
     [studyInstanceUID, seriesInstanceUID]
   )
 
