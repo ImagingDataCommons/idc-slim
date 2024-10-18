@@ -452,6 +452,7 @@ class App extends React.Component<AppProps, AppState> {
               showWorklistButton={false}
               onServerSelection={this.handleServerSelection}
               showServerSelectionButton={false}
+              appConfig={this.props.config}
             />
             <Layout.Content style={layoutContentStyle}>
               <FaSpinner />
@@ -482,6 +483,7 @@ class App extends React.Component<AppProps, AppState> {
                     onServerSelection={this.handleServerSelection}
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
+                    appConfig={this.props.config}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     {worklist}
@@ -500,6 +502,7 @@ class App extends React.Component<AppProps, AppState> {
                     onServerSelection={this.handleServerSelection}
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
+                    appConfig={this.props.config}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     <ParametrizedCaseViewer
@@ -523,6 +526,7 @@ class App extends React.Component<AppProps, AppState> {
                     onServerSelection={this.handleServerSelection}
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
+                    appConfig={this.props.config}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     <ParametrizedCaseViewer
@@ -546,6 +550,7 @@ class App extends React.Component<AppProps, AppState> {
                     onServerSelection={this.handleServerSelection}
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
+                    appConfig={this.props.config}
                   />
                   Logged out
                 </Layout>
