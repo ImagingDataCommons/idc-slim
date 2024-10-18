@@ -31,6 +31,7 @@ import NotificationMiddleware, { NotificationMiddlewareEvents } from '../service
 import { CustomError } from '../utils/CustomError'
 import { v4 as uuidv4 } from 'uuid'
 import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
+import AppConfig from '../AppConfig'
 
 interface HeaderProps extends RouteComponentProps {
   app: {
@@ -48,6 +49,7 @@ interface HeaderProps extends RouteComponentProps {
   onServerSelection: ({ url }: { url: string }) => void
   onUserLogout?: () => void
   showServerSelectionButton: boolean
+  appConfig: AppConfig
 }
 
 interface ExtendedCustomError extends CustomError {
@@ -280,12 +282,12 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     this.setState({ isServerSelectionModalVisible: true })
   }
 
-  handleDownloadButtonClick = (): void => {
+  handleDownloadButtonClick = (appConfig: AppConfig): void => {
     Modal.info({
       title: 'Download Study or Series',
       width: 1000,
       content: (
-        <DownloadStudySeriesDialog />
+        <DownloadStudySeriesDialog appConfig={appConfig} />
       ),
       onOk (): void {}
     })
@@ -425,7 +427,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
                 <Button
                   icon={CloudDownloadOutlined}
                   tooltip='Download Study/Series'
-                  onClick={this.handleDownloadButtonClick}
+                  onClick={() => this.handleDownloadButtonClick(this.props.appConfig)}
                 />
                 {infoButton}
                 {debugButton}

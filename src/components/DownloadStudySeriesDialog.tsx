@@ -1,13 +1,19 @@
 import React, { useCallback, useState } from 'react'
 import { PaperClipOutlined } from '@ant-design/icons'
+import AppConfig, { DownloadStudyDialogSettings } from '../AppConfig'
 
-const getConfig = (): {
-  description: string
-  instructions: Array<{
-    command: string
-    label: string
-  }>
-} => {
+/**
+ * If there's a downloadStudyDialogSettings in the appConfig object then it will return it, otherwise it will return the default settings
+ * @param appConfig the object with all app config
+ * @returns the downloadStudyDialogSettings config object
+ */
+const getConfig = (
+  appConfig: AppConfig
+): DownloadStudyDialogSettings => {
+  if (appConfig.downloadStudyDialog != null) {
+    return appConfig.downloadStudyDialog
+  }
+
   const defaultConfig = {
     description:
       'Follow the instructions below to download the study or series:',
@@ -80,7 +86,9 @@ const DialogInstruction = ({
           }}
         >
           {message !== ''
-            ? message
+            ? (
+                message
+              )
             : (
               <>
                 <div style={{ cursor: 'pointer' }} onClick={copyToClipboard}>
@@ -94,6 +102,11 @@ const DialogInstruction = ({
   )
 }
 
+/**
+ * Gets the studyInstanceUID and seriesInstanceUID params from the URL using the location object
+ * based on the position of the /series and /studies strings
+ * @returns an object with the studyInstanceUID and seriesInstanceUID from the URL
+ */
 const getStudyAndSeriesInfo = (): {
   studyInstanceUID: string
   seriesInstanceUID: string
@@ -107,9 +120,9 @@ const getStudyAndSeriesInfo = (): {
   return { studyInstanceUID, seriesInstanceUID }
 }
 
-const DownloadStudySeriesDialog = (): JSX.Element => {
+const DownloadStudySeriesDialog = ({ appConfig }: { appConfig: AppConfig }): JSX.Element => {
   const { studyInstanceUID, seriesInstanceUID } = getStudyAndSeriesInfo()
-  const config = getConfig()
+  const config = getConfig(appConfig)
 
   const replaceVariables = useCallback(
     (text: string): string =>
