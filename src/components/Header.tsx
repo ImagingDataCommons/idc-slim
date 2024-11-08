@@ -20,7 +20,8 @@ import {
   StopOutlined,
   UnorderedListOutlined,
   UserOutlined,
-  SettingOutlined
+  SettingOutlined,
+  CloudDownloadOutlined
 } from '@ant-design/icons'
 import { detect } from 'detect-browser'
 
@@ -29,6 +30,8 @@ import { RouteComponentProps, withRouter } from '../utils/router'
 import NotificationMiddleware, { NotificationMiddlewareEvents } from '../services/NotificationMiddleware'
 import { CustomError } from '../utils/CustomError'
 import { v4 as uuidv4 } from 'uuid'
+import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
+import AppConfig from '../AppConfig'
 
 interface HeaderProps extends RouteComponentProps {
   app: {
@@ -46,6 +49,7 @@ interface HeaderProps extends RouteComponentProps {
   onServerSelection: ({ url }: { url: string }) => void
   onUserLogout?: () => void
   showServerSelectionButton: boolean
+  appConfig: AppConfig
 }
 
 interface ExtendedCustomError extends CustomError {
@@ -278,6 +282,17 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     this.setState({ isServerSelectionModalVisible: true })
   }
 
+  handleDownloadButtonClick = (appConfig: AppConfig): void => {
+    Modal.info({
+      title: 'Download Study or Series',
+      width: 1000,
+      content: (
+        <DownloadStudySeriesDialog appConfig={appConfig} />
+      ),
+      onOk (): void {}
+    })
+  }
+
   render (): React.ReactNode {
     let user = null
     if (this.props.user !== undefined) {
@@ -409,6 +424,11 @@ class Header extends React.Component<HeaderProps, HeaderState> {
             <Col>
               <Space direction='horizontal'>
                 {worklistButton}
+                <Button
+                  icon={CloudDownloadOutlined}
+                  tooltip='Download Study/Series'
+                  onClick={() => this.handleDownloadButtonClick(this.props.appConfig)}
+                />
                 {infoButton}
                 {debugButton}
                 {serverSelectionButton}
