@@ -75,6 +75,14 @@ export interface OidcSettings {
   endSessionEndpoint?: string
 }
 
+export interface DownloadStudyDialogSettings {
+  description: string
+  instructions: Array<{
+    command: string
+    label: string
+  }>
+}
+
 export default interface AppConfig {
   /**
    * Currently, only one server is supported. However, support for multiple
@@ -94,4 +102,5 @@ export default interface AppConfig {
   enableServerSelection?: boolean
   mode?: string
   preload?: boolean
+  downloadStudyDialog?: DownloadStudyDialogSettings
 }
