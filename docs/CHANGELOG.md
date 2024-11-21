@@ -1,3 +1,31 @@
+# [0.35.0](https://github.com/ImagingDataCommons/slim/compare/v0.34.0...v0.35.0) (2024-11-21)
+
+
+### Features
+
+* bump dmv version ([#254](https://github.com/ImagingDataCommons/slim/issues/254)) ([fe9bb49](https://github.com/ImagingDataCommons/slim/commit/fe9bb496aa503c54ee65ffba86a0cf14b7e7c20f))
+
+# [0.34.0](https://github.com/ImagingDataCommons/slim/compare/v0.33.0...v0.34.0) (2024-11-20)
+
+
+### Features
+
+* improve dicom tag browser ([#251](https://github.com/ImagingDataCommons/slim/issues/251)) ([7e57859](https://github.com/ImagingDataCommons/slim/commit/7e57859287ea3b758f9d2cf4e53729063c589569))
+
+# [0.33.0](https://github.com/ImagingDataCommons/slim/compare/v0.32.0...v0.33.0) (2024-10-31)
+
+
+### Features
+
+* dicom tag browser ([#248](https://github.com/ImagingDataCommons/slim/issues/248)) ([177ed8f](https://github.com/ImagingDataCommons/slim/commit/177ed8f6b6e82614f9563eb22584c2c6b8bc8de4))
+
+# [0.32.0](https://github.com/ImagingDataCommons/slim/compare/v0.31.4...v0.32.0) (2024-10-29)
+
+
+### Features
+
+* remove unused white space ([#247](https://github.com/ImagingDataCommons/slim/issues/247)) ([155e001](https://github.com/ImagingDataCommons/slim/commit/155e0018c2fd8b87eee70c207051de9df55f0ada))
+
 ## [0.31.4](https://github.com/ImagingDataCommons/slim/compare/v0.31.3...v0.31.4) (2024-07-29)
 
 
