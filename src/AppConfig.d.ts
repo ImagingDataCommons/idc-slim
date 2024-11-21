@@ -64,6 +64,7 @@ export interface ServerSettings {
   retry?: RetryRequestSettings
   errorMessages?: ErrorMessageSettings[]
   storageClasses?: string[]
+  upgradeInsecureRequests?: boolean
 }
 
 export interface OidcSettings {
@@ -103,4 +104,9 @@ export default interface AppConfig {
   mode?: string
   preload?: boolean
   downloadStudyDialog?: DownloadStudyDialogSettings
+  messages?: {
+    disabled?: boolean | string[]
+    top?: number
+    duration?: number
+  }
 }
