@@ -453,6 +453,7 @@ class App extends React.Component<AppProps, AppState> {
               onServerSelection={this.handleServerSelection}
               showServerSelectionButton={false}
               appConfig={this.props.config}
+              clients={this.state.clients}
             />
             <Layout.Content style={layoutContentStyle}>
               <FaSpinner />
