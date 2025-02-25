@@ -66,6 +66,7 @@ Raster graphics:
 | <img src="docs/screenshots/IDC_TCGA_TCGA-05-4244-01Z-00-DX1_segmentation.png" alt="IDC TCGA Segmentation" width="350"> | Segmentation |
 | <img src="docs/screenshots/IDC_TCGA_TCGA-05-4244-01Z-00-DX1_bulk_annotations.png" alt="IDC TCGA Segmentation" width="350"> | Microscopy Bulk Simple Annotations |
 
+Note that selection of a derived object in the URL will automatically load the referenced slide and will toggle visibility of the selected derived object. 
 
 ### Annotation of images
 
@@ -320,11 +321,32 @@ REACT_APP_CONFIG=local yarn start
 
 For more information about the motivation, design, and capabilities of Slim, please see the following article:
 
-> [Interoperable slide microscopy viewer and annotation tool for imaging data science and computational pathology]([https://arxiv.org/abs/2205.09122](https://www.nature.com/articles/s41467-023-37224-2))
+> [Interoperable slide microscopy viewer and annotation tool for imaging data science and computational pathology](https://doi.org/10.1038/s41467-023-37224-2)
 > C. Gorman, D. Punzo, I. Octaviano, S. Pieper, W.J.R. Longabaugh, D.A. Clunie, R. Kikinis, A.Y. Fedorov, M.D. Herrmann
-> Nature Communications 4:1572 (2023)
+> Nature Communications 4:1572 (2023) https://doi.org/10.1038/s41467-023-37224-2
 
 If you use Slim in your research, please cite the above article.
+
+## Acknowledgments
+
+This software is maintained by the Imaging Data Commons (IDC) team, which has been funded in whole or
+in part with Federal funds from the NCI, NIH, under task order no. HHSN26110071
+under contract no. HHSN261201500003l.
+
+NCI Imaging Data Commons (IDC) (https://imaging.datacommons.cancer.gov/) is a cloud-based environment 
+containing publicly available cancer imaging data co-located with analysis and exploration tools and resources. 
+IDC is a node within the broader NCI Cancer Research Data Commons (CRDC) infrastructure that provides secure 
+access to a large, comprehensive, and expanding collection of cancer research data.
+
+Learn more about IDC from this publication:
+
+> Fedorov, A., Longabaugh, W. J. R., Pot, D., Clunie, D. A., Pieper, S. D.,
+> Gibbs, D. L., Bridge, C., Herrmann, M. D., Homeyer, A., Lewis, R., Aerts, H.
+> J. W., Krishnaswamy, D., Thiriveedhi, V. K., Ciausu, C., Schacherer, D. P.,
+> Bontempi, D., Pihl, T., Wagner, U., Farahani, K., Kim, E. & Kikinis, R.
+> _National Cancer Institute Imaging Data Commons: Toward Transparency,
+> Reproducibility, and Scalability in Imaging Artificial Intelligence_.
+> RadioGraphics (2023). https://doi.org/10.1148/rg.230180
 
 ## DICOM Conformance Statement
 
