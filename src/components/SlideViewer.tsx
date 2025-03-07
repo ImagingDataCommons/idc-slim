@@ -28,6 +28,7 @@ import { UndoOutlined, CheckOutlined, StopOutlined } from '@ant-design/icons'
 import * as dmv from 'dicom-microscopy-viewer'
 import * as dcmjs from 'dcmjs'
 import * as dwc from 'dicomweb-client'
+import type { CheckboxChangeEvent } from 'antd/es/checkbox'
 
 import DicomWebManager from '../DicomWebManager'
 import AnnotationList from './AnnotationList'
@@ -366,14 +367,15 @@ interface SlideViewerProps extends RouteComponentProps {
     uid: string
     organization?: string
   }
-  preload?: boolean
   annotations: AnnotationSettings[]
   enableAnnotationTools: boolean
+  preload: boolean
   user?: {
     name: string
     email: string
   }
   selectedPresentationStateUID?: string
+  derivedDataset?: dmv.metadata.Dataset // Add this line
 }
 
 interface SlideViewerState {
@@ -421,6 +423,7 @@ interface SlideViewerState {
     }
   }
   loadingFrames: Set<string>
+  isICCProfilesEnabled: boolean
 }
 
 /**
@@ -581,6 +584,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.handleOpticalPathActivityChange = this.handleOpticalPathActivityChange.bind(this)
     this.handlePresentationStateSelection = this.handlePresentationStateSelection.bind(this)
     this.handlePresentationStateReset = this.handlePresentationStateReset.bind(this)
+    this.handleICCProfilesToggle = this.handleICCProfilesToggle.bind(this)
 
     const { volumeViewer, labelViewer } = _constructViewers({
       clients: this.props.clients,
@@ -637,7 +641,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       areRoisHidden: false,
       pixelDataStatistics: {},
       selectedPresentationStateUID: this.props.selectedPresentationStateUID,
-      loadingFrames: new Set()
+      loadingFrames: new Set(),
+      isICCProfilesEnabled: true
     }
   }
 
@@ -976,136 +981,181 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     return this.defaultRoiStyle
   }
 
+  loadDerivedDataset = (derivedDataset: dmv.metadata.Dataset): void => {
+    console.debug('Loading derived dataset')
+    const Comprehensive3DSR = '1.2.840.10008.5.1.4.1.1.88.34'
+    const MicroscopyBulkSimpleAnnotation = '1.2.840.10008.5.1.4.1.1.88.24'
+    const Segmentation = '1.2.840.10008.5.1.4.1.1.66.4'
+    const ParametricMap = '1.2.840.10008.5.1.4.1.1.88.22'
+    const OpticalPath = '1.2.840.10008.5.1.4.1.1.88.21'
+    if ((derivedDataset as { SOPClassUID: string }).SOPClassUID === Comprehensive3DSR) {
+      const allRois = this.volumeViewer.getAllROIs()
+      allRois.forEach((roi) => {
+        this.handleAnnotationVisibilityChange({ roiUID: roi.uid, isVisible: true })
+      })
+      console.debug('Loading Comprehensive 3D SR')
+    } else if ((derivedDataset as { SOPClassUID: string }).SOPClassUID === MicroscopyBulkSimpleAnnotation) {
+      const allAnnotationGroups = this.volumeViewer.getAllAnnotationGroups()
+      allAnnotationGroups.forEach((annotationGroup) => {
+        this.handleAnnotationGroupVisibilityChange({ annotationGroupUID: annotationGroup.uid, isVisible: true })
+      })
+      console.debug('Loading Microscopy Bulk Simple Annotation')
+    } else if ((derivedDataset as { SOPClassUID: string }).SOPClassUID === Segmentation) {
+      const allSegments = this.volumeViewer.getAllSegments()
+      allSegments.forEach((segment) => {
+        this.handleSegmentVisibilityChange({ segmentUID: segment.uid, isVisible: true })
+      })
+      console.debug('Loading Segmentation')
+    } else if ((derivedDataset as { SOPClassUID: string }).SOPClassUID === ParametricMap) {
+      const allParameterMappings = this.volumeViewer.getAllParameterMappings()
+      allParameterMappings.forEach((parameterMapping) => {
+        this.handleMappingVisibilityChange({ mappingUID: parameterMapping.uid, isVisible: true })
+      })
+      console.debug('Loading Parametric Map')
+    } else if ((derivedDataset as { SOPClassUID: string }).SOPClassUID === OpticalPath) {
+      const allOpticalPaths = this.volumeViewer.getAllOpticalPaths()
+      allOpticalPaths.forEach((opticalPath) => {
+        this.handleOpticalPathVisibilityChange({ opticalPathIdentifier: opticalPath.identifier, isVisible: true })
+      })
+      console.debug('Loading Optical Path')
+    }
+  }
+
   /**
    * Retrieve Structured Report instances that contain regions of interests
    * with 3D spatial coordinates defined in the same frame of reference as the
    * currently selected series and add them to the VOLUME image viewer.
    */
-  addAnnotations = (): void => {
-    console.info('search for Comprehensive 3D SR instances')
-    const client = this.props.clients[StorageClasses.COMPREHENSIVE_3D_SR]
-    client.searchForInstances({
-      studyInstanceUID: this.props.studyInstanceUID,
-      queryParams: {
-        Modality: 'SR'
-      }
-    }).then((matchedInstances): void => {
-      if (matchedInstances == null) {
-        matchedInstances = []
-      }
-      matchedInstances.forEach(i => {
-        const { dataset } = dmv.metadata.formatMetadata(i)
-        const instance = dataset as dmv.metadata.Instance
-        if (instance.SOPClassUID === StorageClasses.COMPREHENSIVE_3D_SR) {
-          console.info(`retrieve SR instance "${instance.SOPInstanceUID}"`)
-          client.retrieveInstance({
-            studyInstanceUID: this.props.studyInstanceUID,
-            seriesInstanceUID: instance.SeriesInstanceUID,
-            sopInstanceUID: instance.SOPInstanceUID
-          }).then((retrievedInstance): void => {
-            const data = dcmjs.data.DicomMessage.readFile(retrievedInstance)
-            const { dataset } = dmv.metadata.formatMetadata(data.dict)
-            const report = dataset as unknown as dmv.metadata.Comprehensive3DSR
-            /*
-             * Perform a couple of checks to ensure the document content of the
-             * report fullfils the requirements of the application.
-             */
-            if (!_implementsTID1500(report)) {
-              console.debug(
-                `ignore SR document "${report.SOPInstanceUID}" ` +
-                'because it is not structured according to template ' +
-                'TID 1500 "MeasurementReport"'
-              )
-              return
-            }
-            if (!_describesSpecimenSubject(report)) {
-              console.debug(
-                `ignore SR document "${report.SOPInstanceUID}" ` +
-                'because it does not describe a specimen subject'
-              )
-              return
-            }
-            if (!_containsROIAnnotations(report)) {
-              console.debug(
-                `ignore SR document "${report.SOPInstanceUID}" ` +
-                'because it does not contain any suitable ROI annotations'
-              )
-              return
-            }
-
-            const content = new MeasurementReport(report)
-            content.ROIs.forEach(roi => {
-              console.info(`add ROI "${roi.uid}"`)
-              const scoord3d = roi.scoord3d
-              const image = this.props.slide.volumeImages[0]
-              if (scoord3d.frameOfReferenceUID === image.FrameOfReferenceUID) {
-                /*
-                 * ROIs may get assigned new UIDs upon re-rendering of the
-                 * page and we need to ensure that we don't add them twice.
-                 * The same ROI may be stored in multiple SR documents and
-                 * we don't want them to show up twice.
-                 * TODO: We should probably either "merge" measurements and
-                 * quantitative evaluations or pick the ROI from the "best"
-                 * available report (COMPLETE and VERIFIED).
-                 */
-                const doesROIExist = this.volumeViewer.getAllROIs().some(
-                  (otherROI: dmv.roi.ROI): boolean => {
-                    return _areROIsEqual(otherROI, roi)
-                  }
+  async addAnnotations (): Promise<void> {
+    return await new Promise<void>((resolve, reject) => {
+      console.info('search for Comprehensive 3D SR instances')
+      const client = this.props.clients[StorageClasses.COMPREHENSIVE_3D_SR]
+      client.searchForInstances({
+        studyInstanceUID: this.props.studyInstanceUID,
+        queryParams: {
+          Modality: 'SR'
+        }
+      }).then((matchedInstances): void => {
+        if (matchedInstances == null) {
+          matchedInstances = []
+        }
+        matchedInstances.forEach(i => {
+          const { dataset } = dmv.metadata.formatMetadata(i)
+          const instance = dataset as dmv.metadata.Instance
+          if (instance.SOPClassUID === StorageClasses.COMPREHENSIVE_3D_SR) {
+            console.info(`retrieve SR instance "${instance.SOPInstanceUID}"`)
+            client.retrieveInstance({
+              studyInstanceUID: this.props.studyInstanceUID,
+              seriesInstanceUID: instance.SeriesInstanceUID,
+              sopInstanceUID: instance.SOPInstanceUID
+            }).then((retrievedInstance): void => {
+              const data = dcmjs.data.DicomMessage.readFile(retrievedInstance)
+              const { dataset } = dmv.metadata.formatMetadata(data.dict)
+              const report = dataset as unknown as dmv.metadata.Comprehensive3DSR
+              /*
+              * Perform a couple of checks to ensure the document content of the
+              * report fullfils the requirements of the application.
+              */
+              if (!_implementsTID1500(report)) {
+                console.debug(
+                  `ignore SR document "${report.SOPInstanceUID}" ` +
+                  'because it is not structured according to template ' +
+                  'TID 1500 "MeasurementReport"'
                 )
-                if (!doesROIExist) {
-                  try {
-                    // Add ROI without style such that it won't be visible.
-                    this.volumeViewer.addROI(roi, {})
-                  } catch {
-                    console.error(`could not add ROI "${roi.uid}"`)
+                return
+              }
+              if (!_describesSpecimenSubject(report)) {
+                console.debug(
+                  `ignore SR document "${report.SOPInstanceUID}" ` +
+                  'because it does not describe a specimen subject'
+                )
+                return
+              }
+              if (!_containsROIAnnotations(report)) {
+                console.debug(
+                  `ignore SR document "${report.SOPInstanceUID}" ` +
+                  'because it does not contain any suitable ROI annotations'
+                )
+                return
+              }
+
+              const content = new MeasurementReport(report)
+              content.ROIs.forEach(roi => {
+                console.info(`add ROI "${roi.uid}"`)
+                const scoord3d = roi.scoord3d
+                const image = this.props.slide.volumeImages[0]
+                if (scoord3d.frameOfReferenceUID === image.FrameOfReferenceUID) {
+                  /*
+                  * ROIs may get assigned new UIDs upon re-rendering of the
+                  * page and we need to ensure that we don't add them twice.
+                  * The same ROI may be stored in multiple SR documents and
+                  * we don't want them to show up twice.
+                  * TODO: We should probably either "merge" measurements and
+                  * quantitative evaluations or pick the ROI from the "best"
+                  * available report (COMPLETE and VERIFIED).
+                  */
+                  const doesROIExist = this.volumeViewer.getAllROIs().some(
+                    (otherROI: dmv.roi.ROI): boolean => {
+                      return _areROIsEqual(otherROI, roi)
+                    }
+                  )
+                  if (!doesROIExist) {
+                    try {
+                      // Add ROI without style such that it won't be visible.
+                      this.volumeViewer.addROI(roi, {})
+                    } catch {
+                      console.error(`could not add ROI "${roi.uid}"`)
+                    }
+                  } else {
+                    console.debug(`skip already existing ROI "${roi.uid}"`)
                   }
                 } else {
-                  console.debug(`skip already existing ROI "${roi.uid}"`)
+                  console.debug(
+                    `skip ROI "${roi.uid}" ` +
+                    `of SR document "${report.SOPInstanceUID}"` +
+                    'because it is defined in another frame of reference'
+                  )
                 }
-              } else {
-                console.debug(
-                  `skip ROI "${roi.uid}" ` +
-                  `of SR document "${report.SOPInstanceUID}"` +
-                  'because it is defined in another frame of reference'
+              })
+
+              resolve()
+            }).catch((error) => {
+              // eslint-disable-next-line @typescript-eslint/no-floating-promises
+              NotificationMiddleware.onError(
+                NotificationMiddlewareContext.SLIM,
+                new CustomError(
+                  errorTypes.VISUALIZATION,
+                  'Annotations could not be loaded'
                 )
-              }
-            })
-          }).catch((error) => {
-            // eslint-disable-next-line @typescript-eslint/no-floating-promises
-            NotificationMiddleware.onError(
-              NotificationMiddlewareContext.SLIM,
-              new CustomError(
-                errorTypes.VISUALIZATION,
-                'Annotations could not be loaded'
               )
-            )
-            console.error(
-              'failed to load ROIs ' +
-              `of SOP instance "${instance.SOPInstanceUID}" ` +
-              `of series "${instance.SeriesInstanceUID}" ` +
-              `of study "${this.props.studyInstanceUID}": `,
-              error
-            )
-          })
-          /*
-           * React is not aware of the fact that ROIs have been added via the
-           * viewer (the viewport is a ref object) and won't show the
-           * annotations in the user interface unless an update is forced.
-           */
-          this.forceUpdate()
-        }
-      })
-    }).catch((error) => {
-      console.error(error)
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      NotificationMiddleware.onError(
-        NotificationMiddlewareContext.SLIM,
-        new CustomError(
-          errorTypes.VISUALIZATION,
-          'Annotations could not be loaded'
+              console.error(
+                'failed to load ROIs ' +
+                `of SOP instance "${instance.SOPInstanceUID}" ` +
+                `of series "${instance.SeriesInstanceUID}" ` +
+                `of study "${this.props.studyInstanceUID}": `,
+                error
+              )
+            })
+            /*
+            * React is not aware of the fact that ROIs have been added via the
+            * viewer (the viewport is a ref object) and won't show the
+            * annotations in the user interface unless an update is forced.
+            */
+            this.forceUpdate()
+          }
+        })
+      }).catch((error) => {
+        console.error(error)
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Annotations could not be loaded'
+          )
         )
-      )
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
     })
   }
 
@@ -1114,98 +1164,102 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * annotation groups defined in the same frame of reference as the currently
    * selected series and add them to the VOLUME image viewer.
    */
-  addAnnotationGroups = (): void => {
-    console.info('search for Microscopy Bulk Simple Annotations instances')
-    const client = this.props.clients[
-      StorageClasses.MICROSCOPY_BULK_SIMPLE_ANNOTATION
-    ]
-    client.searchForSeries({
-      studyInstanceUID: this.props.studyInstanceUID,
-      queryParams: {
-        Modality: 'ANN'
-      }
-    }).then((matchedSeries): void => {
-      if (matchedSeries == null) {
-        matchedSeries = []
-      }
-      matchedSeries.forEach(s => {
-        const { dataset } = dmv.metadata.formatMetadata(s)
-        const series = dataset as dmv.metadata.Series
-        client.retrieveSeriesMetadata({
-          studyInstanceUID: this.props.studyInstanceUID,
-          seriesInstanceUID: series.SeriesInstanceUID
-        }).then((retrievedMetadata): void => {
-          const annotations: dmv.metadata.MicroscopyBulkSimpleAnnotations[] = retrievedMetadata.map(metadata => {
-            return new dmv.metadata.MicroscopyBulkSimpleAnnotations({
-              metadata
+  addAnnotationGroups = async (): Promise<void> => {
+    return await new Promise<void>((resolve, reject) => {
+      console.info('search for Microscopy Bulk Simple Annotations instances')
+      const client = this.props.clients[
+        StorageClasses.MICROSCOPY_BULK_SIMPLE_ANNOTATION
+      ]
+      client.searchForSeries({
+        studyInstanceUID: this.props.studyInstanceUID,
+        queryParams: {
+          Modality: 'ANN'
+        }
+      }).then((matchedSeries): void => {
+        if (matchedSeries == null) {
+          matchedSeries = []
+        }
+        matchedSeries.forEach(s => {
+          const { dataset } = dmv.metadata.formatMetadata(s)
+          const series = dataset as dmv.metadata.Series
+          client.retrieveSeriesMetadata({
+            studyInstanceUID: this.props.studyInstanceUID,
+            seriesInstanceUID: series.SeriesInstanceUID
+          }).then((retrievedMetadata): void => {
+            const annotations: dmv.metadata.MicroscopyBulkSimpleAnnotations[] = retrievedMetadata.map(metadata => {
+              return new dmv.metadata.MicroscopyBulkSimpleAnnotations({
+                metadata
+              })
             })
-          })
-          // annotations = annotations.filter(ann => {
-          //   const refImage = this.props.slide.volumeImages[0]
-          //   return (
-          //     ann.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-          //     ann.ContainerIdentifier === refImage.ContainerIdentifier
-          //   )
-          // })
-          annotations.forEach(ann => {
-            try {
-              this.volumeViewer.addAnnotationGroups(ann)
-            } catch (error: any) {
-              // eslint-disable-next-line @typescript-eslint/no-floating-promises
-              NotificationMiddleware.onError(
-                NotificationMiddlewareContext.SLIM,
-                new CustomError(
-                  errorTypes.VISUALIZATION,
-                  'Microscopy Bulk Simple Annotations cannot be displayed.'
+            // annotations = annotations.filter(ann => {
+            //   const refImage = this.props.slide.volumeImages[0]
+            //   return (
+            //     ann.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
+            //     ann.ContainerIdentifier === refImage.ContainerIdentifier
+            //   )
+            // })
+            annotations.forEach(ann => {
+              try {
+                this.volumeViewer.addAnnotationGroups(ann)
+              } catch (error: any) {
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                NotificationMiddleware.onError(
+                  NotificationMiddlewareContext.SLIM,
+                  new CustomError(
+                    errorTypes.VISUALIZATION,
+                    'Microscopy Bulk Simple Annotations cannot be displayed.'
+                  )
                 )
-              )
-              // eslint-disable-next-line @typescript-eslint/no-floating-promises
-              console.error('failed to add annotation groups:', error)
-            }
-            ann.AnnotationGroupSequence.forEach(item => {
-              const annotationGroupUID = item.AnnotationGroupUID
-              const finding = item.AnnotationPropertyTypeCodeSequence[0]
-              const key = _buildKey(finding)
-              const style = this.roiStyles[key]
-              // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
-              if (style != null && style.fill != null) {
-                this.volumeViewer.setAnnotationGroupStyle(
-                  annotationGroupUID,
-                  { color: style.fill.color }
-                )
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                console.error('failed to add annotation groups:', error)
               }
+              ann.AnnotationGroupSequence.forEach(item => {
+                const annotationGroupUID = item.AnnotationGroupUID
+                const finding = item.AnnotationPropertyTypeCodeSequence[0]
+                const key = _buildKey(finding)
+                const style = this.roiStyles[key]
+                // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
+                if (style != null && style.fill != null) {
+                  this.volumeViewer.setAnnotationGroupStyle(
+                    annotationGroupUID,
+                    { color: style.fill.color }
+                  )
+                }
+              })
             })
-          })
-          /*
-           * React is not aware of the fact that annotation groups have been
-           * added via the viewer (the underlying HTML viewport element is a
-           * ref object) and won't show the annotation groups in the user
-           * interface unless an update is forced.
-           */
-          this.forceUpdate()
-        }).catch((error) => {
-          console.error(error)
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          NotificationMiddleware.onError(
-            NotificationMiddlewareContext.SLIM,
-            new CustomError(
-              errorTypes.VISUALIZATION,
-              'Retrieval of metadata of Microscopy Bulk Simple Annotations ' +
-              'instances failed.'
+            /*
+            * React is not aware of the fact that annotation groups have been
+            * added via the viewer (the underlying HTML viewport element is a
+            * ref object) and won't show the annotation groups in the user
+            * interface unless an update is forced.
+            */
+            this.forceUpdate()
+            resolve()
+          }).catch((error) => {
+            console.error(error)
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            NotificationMiddleware.onError(
+              NotificationMiddlewareContext.SLIM,
+              new CustomError(
+                errorTypes.VISUALIZATION,
+                'Retrieval of metadata of Microscopy Bulk Simple Annotations ' +
+                'instances failed.'
+              )
             )
-          )
+          })
         })
-      })
-    }).catch((error) => {
-      console.error(error)
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      NotificationMiddleware.onError(
-        NotificationMiddlewareContext.SLIM,
-        new CustomError(
-          errorTypes.VISUALIZATION,
-          'Search for Microscopy Bulk Simple Annotations instances failed.'
+      }).catch((error) => {
+        console.error(error)
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Search for Microscopy Bulk Simple Annotations instances failed.'
+          )
         )
-      )
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
     })
   }
 
@@ -1214,80 +1268,85 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * frame of reference as the currently selected series and add them to the
    * VOLUME image viewer.
    */
-  addSegmentations = (): void => {
-    console.info('search for Segmentation instances')
-    const client = this.props.clients[StorageClasses.SEGMENTATION]
-    client.searchForSeries({
-      studyInstanceUID: this.props.studyInstanceUID,
-      queryParams: {
-        Modality: 'SEG'
-      }
-    }).then((matchedSeries): void => {
-      if (matchedSeries == null) {
-        matchedSeries = []
-      }
-      matchedSeries.forEach((s, i) => {
-        const { dataset } = dmv.metadata.formatMetadata(s)
-        const series = dataset as dmv.metadata.Series
-        client.retrieveSeriesMetadata({
-          studyInstanceUID: this.props.studyInstanceUID,
-          seriesInstanceUID: series.SeriesInstanceUID
-        }).then((retrievedMetadata): void => {
-          const segmentations: dmv.metadata.Segmentation[] = []
-          retrievedMetadata.forEach(metadata => {
-            const seg = new dmv.metadata.Segmentation({ metadata })
-            const refImage = this.props.slide.volumeImages[0]
-            if (
-              seg.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-              seg.ContainerIdentifier === refImage.ContainerIdentifier
-            ) {
-              segmentations.push(seg)
-            }
-          })
-          if (segmentations.length > 0) {
-            try {
-              this.volumeViewer.addSegments(segmentations)
-            } catch (error: any) {
-              // eslint-disable-next-line @typescript-eslint/no-floating-promises
-              NotificationMiddleware.onError(
-                NotificationMiddlewareContext.SLIM,
-                new CustomError(
-                  errorTypes.VISUALIZATION,
-                  'Segmentations cannot be displayed'
+  addSegmentations = async (): Promise<void> => {
+    return await new Promise<void>((resolve, reject) => {
+      console.info('search for Segmentation instances')
+      const client = this.props.clients[StorageClasses.SEGMENTATION]
+      client.searchForSeries({
+        studyInstanceUID: this.props.studyInstanceUID,
+        queryParams: {
+          Modality: 'SEG'
+        }
+      }).then((matchedSeries): void => {
+        if (matchedSeries == null) {
+          matchedSeries = []
+        }
+        matchedSeries.forEach((s, i) => {
+          const { dataset } = dmv.metadata.formatMetadata(s)
+          const series = dataset as dmv.metadata.Series
+          client.retrieveSeriesMetadata({
+            studyInstanceUID: this.props.studyInstanceUID,
+            seriesInstanceUID: series.SeriesInstanceUID
+          }).then((retrievedMetadata): void => {
+            const segmentations: dmv.metadata.Segmentation[] = []
+            retrievedMetadata.forEach(metadata => {
+              const seg = new dmv.metadata.Segmentation({ metadata })
+              const refImage = this.props.slide.volumeImages[0]
+              if (
+                seg.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
+                seg.ContainerIdentifier === refImage.ContainerIdentifier
+              ) {
+                segmentations.push(seg)
+              }
+            })
+            if (segmentations.length > 0) {
+              try {
+                this.volumeViewer.addSegments(segmentations)
+              } catch (error: any) {
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                NotificationMiddleware.onError(
+                  NotificationMiddlewareContext.SLIM,
+                  new CustomError(
+                    errorTypes.VISUALIZATION,
+                    'Segmentations cannot be displayed'
+                  )
                 )
-              )
-              console.error('failed to add segments: ', error)
+                console.error('failed to add segments: ', error)
+              }
+              /*
+              * React is not aware of the fact that segments have been added via
+              * the viewer (the underlying HTML viewport element is a ref object)
+              * and won't show the segments in the user interface unless an update
+              * is forced.
+              */
+              this.forceUpdate()
             }
-            /*
-           * React is not aware of the fact that segments have been added via
-           * the viewer (the underlying HTML viewport element is a ref object)
-           * and won't show the segments in the user interface unless an update
-           * is forced.
-           */
-            this.forceUpdate()
-          }
-        }).catch((error) => {
-          console.error(error)
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          NotificationMiddleware.onError(
-            NotificationMiddlewareContext.SLIM,
-            new CustomError(
-              errorTypes.VISUALIZATION,
-              'Retrieval of metadata of Segmentation instances failed.'
+
+            resolve()
+          }).catch((error) => {
+            console.error(error)
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            NotificationMiddleware.onError(
+              NotificationMiddlewareContext.SLIM,
+              new CustomError(
+                errorTypes.VISUALIZATION,
+                'Retrieval of metadata of Segmentation instances failed.'
+              )
             )
-          )
+          })
         })
-      })
-    }).catch((error) => {
-      console.error(error)
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      NotificationMiddleware.onError(
-        NotificationMiddlewareContext.SLIM,
-        new CustomError(
-          errorTypes.VISUALIZATION,
-          'Search for Segmentation instances failed.'
+      }).catch((error) => {
+        console.error(error)
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Search for Segmentation instances failed.'
+          )
         )
-      )
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
     })
   }
 
@@ -1296,84 +1355,88 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * frame of reference as the currently selected series and add them to the
    * VOLUME image viewer.
    */
-  addParametricMaps = (): void => {
-    console.info('search for Parametric Map instances')
-    const client = this.props.clients[StorageClasses.PARAMETRIC_MAP]
-    client.searchForSeries({
-      studyInstanceUID: this.props.studyInstanceUID,
-      queryParams: {
-        Modality: 'OT'
-      }
-    }).then((matchedSeries): void => {
-      if (matchedSeries == null) {
-        matchedSeries = []
-      }
-      matchedSeries.forEach(s => {
-        const { dataset } = dmv.metadata.formatMetadata(s)
-        const series = dataset as dmv.metadata.Series
-        client.retrieveSeriesMetadata({
-          studyInstanceUID: this.props.studyInstanceUID,
-          seriesInstanceUID: series.SeriesInstanceUID
-        }).then((retrievedMetadata): void => {
-          const parametricMaps: dmv.metadata.ParametricMap[] = []
-          retrievedMetadata.forEach(metadata => {
-            const pm = new dmv.metadata.ParametricMap({ metadata })
-            const refImage = this.props.slide.volumeImages[0]
-            if (
-              pm.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-              pm.ContainerIdentifier === refImage.ContainerIdentifier
-            ) {
-              parametricMaps.push(pm)
-            } else {
-              console.warn(
-                `skip Parametric Map instance "${pm.SOPInstanceUID}"`
-              )
-            }
-          })
-          if (parametricMaps.length > 0) {
-            try {
-              this.volumeViewer.addParameterMappings(parametricMaps)
-            } catch (error: any) {
-              // eslint-disable-next-line @typescript-eslint/no-floating-promises
-              NotificationMiddleware.onError(
-                NotificationMiddlewareContext.SLIM,
-                new CustomError(
-                  errorTypes.VISUALIZATION,
-                  'Parametric Map cannot be displayed'
+  addParametricMaps = async (): Promise<void> => {
+    return await new Promise<void>((resolve, reject) => {
+      console.info('search for Parametric Map instances')
+      const client = this.props.clients[StorageClasses.PARAMETRIC_MAP]
+      client.searchForSeries({
+        studyInstanceUID: this.props.studyInstanceUID,
+        queryParams: {
+          Modality: 'OT'
+        }
+      }).then((matchedSeries): void => {
+        if (matchedSeries == null) {
+          matchedSeries = []
+        }
+        matchedSeries.forEach(s => {
+          const { dataset } = dmv.metadata.formatMetadata(s)
+          const series = dataset as dmv.metadata.Series
+          client.retrieveSeriesMetadata({
+            studyInstanceUID: this.props.studyInstanceUID,
+            seriesInstanceUID: series.SeriesInstanceUID
+          }).then((retrievedMetadata): void => {
+            const parametricMaps: dmv.metadata.ParametricMap[] = []
+            retrievedMetadata.forEach(metadata => {
+              const pm = new dmv.metadata.ParametricMap({ metadata })
+              const refImage = this.props.slide.volumeImages[0]
+              if (
+                pm.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
+                pm.ContainerIdentifier === refImage.ContainerIdentifier
+              ) {
+                parametricMaps.push(pm)
+              } else {
+                console.warn(
+                  `skip Parametric Map instance "${pm.SOPInstanceUID}"`
                 )
-              )
-              console.error('failed to add mappings: ', error)
+              }
+            })
+            if (parametricMaps.length > 0) {
+              try {
+                this.volumeViewer.addParameterMappings(parametricMaps)
+              } catch (error: any) {
+                // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                NotificationMiddleware.onError(
+                  NotificationMiddlewareContext.SLIM,
+                  new CustomError(
+                    errorTypes.VISUALIZATION,
+                    'Parametric Map cannot be displayed'
+                  )
+                )
+                console.error('failed to add mappings: ', error)
+              }
+              /*
+               * React is not aware of the fact that mappings have been added via
+               * the viewer (the underlying HTML viewport element is a ref object)
+               * and won't show the mappings in the user interface unless an update
+               * is forced.
+               */
+              this.forceUpdate()
             }
-            /*
-           * React is not aware of the fact that mappings have been added via
-           * the viewer (the underlying HTML viewport element is a ref object)
-           * and won't show the mappings in the user interface unless an update
-           * is forced.
-           */
-            this.forceUpdate()
-          }
-        }).catch((error) => {
-          console.error(error)
-          // eslint-disable-next-line @typescript-eslint/no-floating-promises
-          NotificationMiddleware.onError(
-            NotificationMiddlewareContext.SLIM,
-            new CustomError(
-              errorTypes.VISUALIZATION,
-              'Retrieval of metadata of Parametric Map instances failed.'
+            resolve()
+          }).catch((error) => {
+            console.error(error)
+            // eslint-disable-next-line @typescript-eslint/no-floating-promises
+            NotificationMiddleware.onError(
+              NotificationMiddlewareContext.SLIM,
+              new CustomError(
+                errorTypes.VISUALIZATION,
+                'Retrieval of metadata of Parametric Map instances failed.'
+              )
             )
-          )
+          })
         })
-      })
-    }).catch((error) => {
-      console.error(error)
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      NotificationMiddleware.onError(
-        NotificationMiddlewareContext.SLIM,
-        new CustomError(
-          errorTypes.VISUALIZATION,
-          'Search for Parametric Map instances failed.'
+      }).catch((error) => {
+        console.error(error)
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Search for Parametric Map instances failed.'
+          )
         )
-      )
+        reject(error instanceof Error ? error : new Error(String(error)))
+      })
     })
   }
 
@@ -1403,10 +1466,46 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.setDefaultPresentationState()
     this.loadPresentationStates()
 
-    this.addAnnotations()
-    this.addAnnotationGroups()
-    this.addSegmentations()
-    this.addParametricMaps()
+    // Handle promises properly with catch blocks
+    void this.addAnnotations()
+      .then(() => {
+        if (this.props.derivedDataset != null) {
+          this.loadDerivedDataset(this.props.derivedDataset)
+        }
+      })
+      .catch(error => {
+        console.error('Failed to add annotations:', error)
+      })
+
+    void this.addAnnotationGroups()
+      .then(() => {
+        if (this.props.derivedDataset != null) {
+          this.loadDerivedDataset(this.props.derivedDataset)
+        }
+      })
+      .catch(error => {
+        console.error('Failed to add annotation groups:', error)
+      })
+
+    void this.addSegmentations()
+      .then(() => {
+        if (this.props.derivedDataset != null) {
+          this.loadDerivedDataset(this.props.derivedDataset)
+        }
+      })
+      .catch(error => {
+        console.error('Failed to add segmentations:', error)
+      })
+
+    void this.addParametricMaps()
+      .then(() => {
+        if (this.props.derivedDataset != null) {
+          this.loadDerivedDataset(this.props.derivedDataset)
+        }
+      })
+      .catch(error => {
+        console.error('Failed to add parametric maps:', error)
+      })
   }
 
   onRoiModified = (event: CustomEventInit): void => {
@@ -1476,6 +1575,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   setHoveredRoiAttributes = (hoveredRois: dmv.roi.ROI[]): void => {
     const rois = this.volumeViewer.getAllROIs()
+    if (rois.length === 0) {
+      this.setState({ hoveredRoiAttributes: [] })
+      return
+    }
+
     const result = hoveredRois.map((roi) => {
       const attributes: Array<{ name: string, value: string }> = []
       const evaluations = roi.evaluations
@@ -1539,8 +1643,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     }
     const allRois = [...this.hoveredRois, newRoi]
     const uniqueIds = Array.from(new Set(allRois.map(roi => roi.uid)))
-    // @ts-expect-error
-    return uniqueIds.map(id => allRois.find(roi => roi.uid === id)).filter(roi => roi !== undefined)
+    return uniqueIds.map(id => allRois.find(roi => roi.uid === id))
+      .filter((roi): roi is dmv.roi.ROI => roi !== undefined)
   }
 
   isSamePixelAsLast = (event: any): boolean => {
@@ -3042,7 +3146,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    */
   handleRoiVisibilityChange (): void {
     console.info('toggle visibility of ROIs')
-    if (this.volumeViewer.areROIsVisible) {
+    if (!this.state.areRoisHidden) {
       this.volumeViewer.deactivateDrawInteraction()
       this.volumeViewer.deactivateSnapInteraction()
       this.volumeViewer.deactivateTranslateInteraction()
@@ -3065,6 +3169,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
       this.setState({ areRoisHidden: false })
     }
+  }
+
+  /**
+   * Handler that will toggle the ICC profile color management, i.e., either
+   * enable or disable it, depending on its current state.
+   */
+  handleICCProfilesToggle = (event: CheckboxChangeEvent): void => {
+    const checked = event.target.checked
+    this.setState({ isICCProfilesEnabled: checked })
+    this.volumeViewer.toggleICCProfiles()
   }
 
   render (): React.ReactNode {
@@ -3106,10 +3220,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       )
     }
 
-    const findingOptions = this.findingOptions.map(finding => {
+    const findingOptions = this.findingOptions.map((finding, index) => {
       return (
         <Select.Option
-          key={finding.CodeValue}
+          key={(finding.CodeValue !== undefined && finding.CodeValue !== '') ? finding.CodeValue : `finding-${index}`}
           value={finding.CodeValue}
         >
           {finding.CodeMeaning}
@@ -3142,20 +3256,20 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           onSelect={this.handleAnnotationFindingSelection}
           key='annotation-finding'
           defaultActiveFirstOption
+          placeholder='Select finding'
         >
           {findingOptions}
         </Select>
       )
     ]
-
     const selectedFinding = this.state.selectedFinding
     if (selectedFinding !== undefined) {
       const key = _buildKey(selectedFinding)
-      this.evaluationOptions[key].forEach(evaluation => {
+      this.evaluationOptions[key].forEach((evaluation, index) => {
         const evaluationOptions = evaluation.values.map(code => {
           return (
             <Select.Option
-              key={code.CodeValue}
+              key={(code.CodeValue !== undefined && code.CodeValue !== '') ? code.CodeValue : `evaluation-${index}`}
               value={code.CodeValue}
               label={evaluation.name}
             >
@@ -3188,6 +3302,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             style={{ minWidth: 130 }}
             onSelect={this.handleAnnotationGeometryTypeSelection}
             key='annotation-geometry-type'
+            placeholder='Select geometry type'
           >
             {geometryTypeOptions}
           </Select>
@@ -3266,15 +3381,15 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     let presentationStateMenu
     if (this.state.presentationStates.length > 0) {
       const presentationStateOptions = []
-      this.state.presentationStates.forEach(instance => {
+      this.state.presentationStates.forEach((instance, index) => {
         presentationStateOptions.push(
           <Select.Option
-            key={instance.SOPInstanceUID}
+            key={(instance.SOPInstanceUID !== undefined && instance.SOPInstanceUID !== '') ? instance.SOPInstanceUID : `presentation-state-${index}`}
             value={instance.SOPInstanceUID}
             dropdownMatchSelectWidth={false}
             size='small'
           >
-            {instance.ContentDescription}
+            {instance.ContentDescription !== undefined && instance.ContentDescription !== '' ? instance.ContentDescription : 'Untitled'}
           </Select.Option>
         )
       })
@@ -3656,6 +3771,17 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       )
     }
 
+    const iccProfilesMenu = this.volumeViewer.getICCProfiles().length > 0 && (
+      <div style={{ margin: '0.9rem' }}>
+        <Checkbox
+          checked={this.state.isICCProfilesEnabled}
+          onChange={this.handleICCProfilesToggle}
+        >
+          ICC Profiles
+        </Checkbox>
+      </div>
+    )
+
     return (
       <Layout style={{ height: '100%' }} hasSider>
         <Layout.Content style={{ height: '100%' }}>
@@ -3674,6 +3800,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             open={this.state.isAnnotationModalVisible}
             title='Configure annotations'
             onOk={this.handleAnnotationConfigurationCompletion}
+            okButtonProps={{ disabled: !(this.state.selectedFinding !== undefined && this.state.selectedGeometryType !== undefined) }}
             onCancel={this.handleAnnotationConfigurationCancellation}
             okText='Select'
           >
@@ -3812,6 +3939,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               </Menu.SubMenu>
             )}
             {specimenMenu}
+            {iccProfilesMenu}
             {equipmentMenu}
             {opticalPathMenu}
             {presentationStateMenu}
@@ -3825,7 +3953,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 )
               : (
                 <Menu.SubMenu
-                  key='annotation-category'
+                  key='annotation-categories'
                   title='Annotation Categories'
                 >
                   <AnnotationCategoryList
