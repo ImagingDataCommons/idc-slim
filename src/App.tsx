@@ -158,6 +158,7 @@ interface AppProps {
 
 interface AppState {
   clients: { [sopClassUID: string]: DicomWebManager }
+  defaultClients: { [sopClassUID: string]: DicomWebManager }
   user?: User
   isLoading: boolean
   redirectTo?: string
@@ -249,13 +250,16 @@ class App extends React.Component<AppProps, AppState> {
     message.config({ duration: 5 })
     this.addGcpSecondaryAnnotationServer(props.config)
 
+    const defaultClients = _createClientMapping({
+      baseUri,
+      gcpBaseUrl: props.config.gcpBaseUrl ?? 'https://healthcare.googleapis.com/v1',
+      settings: props.config.servers,
+      onError: this.handleDICOMwebError
+    })
+
     this.state = {
-      clients: _createClientMapping({
-        baseUri,
-        gcpBaseUrl: props.config.gcpBaseUrl ?? 'https://healthcare.googleapis.com/v1',
-        settings: props.config.servers,
-        onError: this.handleDICOMwebError
-      }),
+      clients: defaultClients,
+      defaultClients,
       isLoading: true,
       wasAuthSuccessful: false
     }
@@ -290,6 +294,11 @@ class App extends React.Component<AppProps, AppState> {
 
   handleServerSelection ({ url }: { url: string }): void {
     console.info('select DICOMweb server: ', url)
+    if (url === '' || window.localStorage.getItem('slim_server_selection_mode') === 'default') {
+      this.setState({ clients: this.state.defaultClients })
+      return
+    }
+    window.localStorage.setItem('slim_selected_server', url)
     const tmpClient = new DicomWebManager({
       baseUri: '',
       settings: [{
@@ -334,11 +343,11 @@ class App extends React.Component<AppProps, AppState> {
     }
     const storedPath = window.localStorage.getItem('slim_path')
     const storedSearch = window.localStorage.getItem('slim_search')
-    if (storedPath != null) {
+    if (storedPath !== null && storedPath !== '') {
       const currentPath = window.location.pathname
       if (storedPath !== currentPath) {
         let path = storedPath
-        if (storedSearch != null) {
+        if (storedSearch !== null && storedSearch !== '') {
           path += storedSearch
         }
         window.location.href = path
@@ -384,10 +393,17 @@ class App extends React.Component<AppProps, AppState> {
 
   componentDidMount (): void {
     const path = window.localStorage.getItem('slim_path')
-    if (path == null) {
+    if (path === null || path === '') {
       window.localStorage.setItem('slim_path', window.location.pathname)
       window.localStorage.setItem('slim_search', window.location.search)
     }
+
+    // Restore cached server selection if it exists
+    const cachedServerUrl = window.localStorage.getItem('slim_selected_server')
+    if (cachedServerUrl !== null && cachedServerUrl !== '') {
+      this.handleServerSelection({ url: cachedServerUrl })
+    }
+
     this.signIn()
   }
 
@@ -454,6 +470,7 @@ class App extends React.Component<AppProps, AppState> {
               showServerSelectionButton={false}
               appConfig={this.props.config}
               clients={this.state.clients}
+              defaultClients={this.state.defaultClients}
             />
             <Layout.Content style={layoutContentStyle}>
               <FaSpinner />
@@ -485,6 +502,8 @@ class App extends React.Component<AppProps, AppState> {
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
                     appConfig={this.props.config}
+                    clients={this.state.clients}
+                    defaultClients={this.state.defaultClients}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     {worklist}
@@ -504,6 +523,8 @@ class App extends React.Component<AppProps, AppState> {
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
                     appConfig={this.props.config}
+                    clients={this.state.clients}
+                    defaultClients={this.state.defaultClients}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     <ParametrizedCaseViewer
@@ -528,6 +549,8 @@ class App extends React.Component<AppProps, AppState> {
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
                     appConfig={this.props.config}
+                    clients={this.state.clients}
+                    defaultClients={this.state.defaultClients}
                   />
                   <Layout.Content style={layoutContentStyle}>
                     <ParametrizedCaseViewer
@@ -552,6 +575,8 @@ class App extends React.Component<AppProps, AppState> {
                     onUserLogout={isLogoutPossible ? onLogout : undefined}
                     showServerSelectionButton={enableServerSelection}
                     appConfig={this.props.config}
+                    clients={this.state.clients}
+                    defaultClients={this.state.defaultClients}
                   />
                   Logged out
                 </Layout>
