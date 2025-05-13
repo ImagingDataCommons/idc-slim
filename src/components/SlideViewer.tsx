@@ -49,7 +49,7 @@ import { CustomError, errorTypes } from '../utils/CustomError'
 import NotificationMiddleware, {
   NotificationMiddlewareContext
 } from '../services/NotificationMiddleware'
-import AnnotationCategoryList from './AnnotationCategoryList'
+import AnnotationCategoryList, { AnnotationCategoryAndType } from './AnnotationCategoryList'
 import HoveredRoiTooltip from './HoveredRoiTooltip'
 import { adaptRoiToAnnotation } from '../services/RoiToAnnotationAdapter'
 
@@ -68,6 +68,12 @@ const DEFAULT_ANNOTATION_COLOR_PALETTE = [
   [0, 255, 255],
   [0, 0, 0]
 ]
+
+interface StyleOptions {
+  opacity: number
+  color: number[]
+  contourOnly: boolean
+}
 
 const _buildKey = (concept: {
   CodeValue: string
@@ -473,11 +479,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   private roiStyles: {[key: string]: dmv.viewer.ROIStyleOptions} = {}
 
   private defaultAnnotationStyles: {
-    [annotationUID: string]: {
-      opacity: number
-      color: number[]
-      contourOnly: boolean
-    }
+    [annotationUID: string]: StyleOptions
   } = {}
 
   private readonly selectionColor: number[] = [140, 184, 198]
@@ -1103,6 +1105,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                     try {
                       // Add ROI without style such that it won't be visible.
                       this.volumeViewer.addROI(roi, {})
+                      const roiAsAnnotation = adaptRoiToAnnotation(roi)
+                      this.formatAnnotation(roiAsAnnotation)
                     } catch {
                       console.error(`could not add ROI "${roi.uid}"`)
                     }
@@ -2653,11 +2657,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   generateRoiStyle (
-    styleOptions: {
-      opacity?: number
-      color?: number[]
-      contourOnly: boolean
-    }): dmv.viewer.ROIStyleOptions {
+    styleOptions: StyleOptions): dmv.viewer.ROIStyleOptions {
     const opacity = styleOptions.opacity ?? DEFAULT_ANNOTATION_OPACITY
     const strokeColor = styleOptions.color ?? DEFAULT_ANNOTATION_STROKE_COLOR
     const fillColor = styleOptions.contourOnly ? [0, 0, 0, 0] : strokeColor.map((c) => Math.min(c + 25, 255))
@@ -2671,11 +2671,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   handleRoiStyleChange ({ uid, styleOptions }: {
     uid: string
-    styleOptions: {
-      opacity: number
-      color: number[]
-      contourOnly: boolean
-    }
+    styleOptions: StyleOptions
   }): void {
     console.log(`change style of ROI ${uid}`)
     try {
@@ -3181,6 +3177,25 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.volumeViewer.toggleICCProfiles()
   }
 
+  formatAnnotation = (annotation: AnnotationCategoryAndType | dmv.roi.ROI): void => {
+    const roi = this.volumeViewer.getROI(annotation.uid)
+    const key = _getRoiKey(roi) as string
+    const color = this.roiStyles[key] !== undefined
+      ? this.roiStyles[key].stroke?.color.slice(0, 3)
+      : DEFAULT_ANNOTATION_COLOR_PALETTE[
+        Object.keys(this.roiStyles).length % DEFAULT_ANNOTATION_COLOR_PALETTE.length
+      ]
+    this.defaultAnnotationStyles[annotation.uid] = {
+      color: color as number[],
+      opacity: DEFAULT_ANNOTATION_OPACITY,
+      contourOnly: false
+    }
+
+    this.roiStyles[key] = this.generateRoiStyle(
+      this.defaultAnnotationStyles[annotation.uid]
+    )
+  }
+
   render (): React.ReactNode {
     const rois: dmv.roi.ROI[] = []
     const segments: dmv.segment.Segment[] = []
@@ -3495,26 +3510,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
     let annotationGroupMenu
 
-    if (annotations.length > 0) {
-      annotations.forEach((annotation) => {
-        const roi = this.volumeViewer.getROI(annotation.uid)
-        const key = _getRoiKey(roi) as string
-        const color = this.roiStyles[key] !== undefined
-          ? this.roiStyles[key].stroke?.color.slice(0, 3)
-          : DEFAULT_ANNOTATION_COLOR_PALETTE[
-            Object.keys(this.roiStyles).length % DEFAULT_ANNOTATION_COLOR_PALETTE.length
-          ]
-        this.defaultAnnotationStyles[annotation.uid] = {
-          color,
-          opacity: DEFAULT_ANNOTATION_OPACITY,
-          contourOnly: false
-        } as any
-
-        this.roiStyles[key] = this.generateRoiStyle(
-          this.defaultAnnotationStyles[annotation.uid]
-        )
-      })
-    }
+    annotations?.forEach?.(this.formatAnnotation.bind(this))
 
     if (annotationGroups.length > 0) {
       const annotationGroupMetadata: {
