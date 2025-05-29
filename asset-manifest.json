@@ -1,22 +1,25 @@
 {
   "files": {
     "main.css": "https://imagingdatacommons.github.io/slim/static/css/main.4efb37a3.css",
-    "main.js": "https://imagingdatacommons.github.io/slim/static/js/main.770ad161.js",
+    "main.js": "https://imagingdatacommons.github.io/slim/static/js/main.ed07657f.js",
     "static/css/808.63dd515e.chunk.css": "https://imagingdatacommons.github.io/slim/static/css/808.63dd515e.chunk.css",
     "static/js/808.6fb861a3.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/808.6fb861a3.chunk.js",
     "static/css/912.01eda5f6.chunk.css": "https://imagingdatacommons.github.io/slim/static/css/912.01eda5f6.chunk.css",
     "static/js/912.6fea0dd8.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/912.6fea0dd8.chunk.js",
-    "static/js/685.4a217141.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/685.4a217141.chunk.js",
-    "static/js/996.d7ecc906.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/996.d7ecc906.chunk.js",
+    "static/js/502.a640712b.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/502.a640712b.chunk.js",
+    "static/js/996.50f6c1ee.chunk.js": "https://imagingdatacommons.github.io/slim/static/js/996.50f6c1ee.chunk.js",
     "static/js/dicomMicroscopyViewer.min.js.map": "https://imagingdatacommons.github.io/slim/static/js/dicomMicroscopyViewer.min.js.map",
     "static/js/dicomMicroscopyViewer.min.js": "https://imagingdatacommons.github.io/slim/static/js/dicomMicroscopyViewer.min.js",
     "static/js/index.worker.min.worker.js.map": "https://imagingdatacommons.github.io/slim/static/js/index.worker.min.worker.js.map",
     "static/js/index.worker.min.worker.js": "https://imagingdatacommons.github.io/slim/static/js/index.worker.min.worker.js",
-    "static/js/wasm": "https://imagingdatacommons.github.io/slim/static/js/5004fdc02f329ce53b69.wasm",
+    "static/js/dicom-microscopy-viewer/openjpegwasm_decode.wasm": "https://imagingdatacommons.github.io/slim/static/js/dicom-microscopy-viewer/openjpegwasm_decode.wasm",
+    "static/js/dicom-microscopy-viewer/dicomiccwasm.wasm": "https://imagingdatacommons.github.io/slim/static/js/dicom-microscopy-viewer/dicomiccwasm.wasm",
+    "static/js/dicom-microscopy-viewer/libjpegturbowasm_decode.wasm": "https://imagingdatacommons.github.io/slim/static/js/dicom-microscopy-viewer/libjpegturbowasm_decode.wasm",
+    "static/js/dicom-microscopy-viewer/charlswasm_decode.wasm": "https://imagingdatacommons.github.io/slim/static/js/dicom-microscopy-viewer/charlswasm_decode.wasm",
     "index.html": "https://imagingdatacommons.github.io/slim/index.html"
   },
   "entrypoints": [
     "static/css/main.4efb37a3.css",
-    "static/js/main.770ad161.js"
+    "static/js/main.ed07657f.js"
   ]
 }
