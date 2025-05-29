@@ -1,6 +1,5 @@
 const CracoLessPlugin = require('craco-less')
 const CopyWebpackPlugin = require('copy-webpack-plugin')
-const webpack = require('webpack')
 
 module.exports = {
   plugins: [
@@ -54,25 +53,6 @@ module.exports = {
           ]
         })
       )
-      config.plugins.push({
-        apply: (compiler) => {
-          compiler.hooks.compilation.tap('RewriteUrlsPlugin', (compilation) => {
-            compilation.hooks.processAssets.tap(
-              { name: 'RewriteUrlsPlugin', stage: webpack.Compilation.PROCESS_ASSETS_STAGE_OPTIMIZE },
-              (assets) => {
-                for (const [filename, asset] of Object.entries(assets)) {
-                  if (typeof asset.source() === 'string') {
-                    compilation.updateAsset(
-                      filename,
-                      new webpack.sources.RawSource(asset.source().replace(/\/dicom-microscopy-viewer\//g, '/slim/static/js/'))
-                    );
-                  }
-                }
-              }
-            )
-          })
-        }
-      })
       config.target = 'web'
       config.experiments = {
         asyncWebAssembly: true
