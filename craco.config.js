@@ -64,7 +64,7 @@ module.exports = {
                   if (typeof asset.source() === 'string') {
                     compilation.updateAsset(
                       filename,
-                      new webpack.sources.RawSource(asset.source().replace(/\/dicom-microscopy-viewer\//g, '/static/js/'))
+                      new webpack.sources.RawSource(asset.source().replace(/\/dicom-microscopy-viewer\//g, '/slim/static/js/'))
                     );
                   }
                 }
