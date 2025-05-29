@@ -40,7 +40,7 @@ module.exports = {
         */
         alias: {
           'dicom-microscopy-viewer':
-            'dicom-microscopy-viewer/dist/dynamic-import/dicom-microscopy-viewer/dicomMicroscopyViewer.min.js'
+            'dicom-microscopy-viewer/dist/dynamic-import/dicomMicroscopyViewer.min.js'
         }
       }
       config.plugins.push(
@@ -48,7 +48,7 @@ module.exports = {
         new CopyWebpackPlugin({
           patterns: [
             {
-              from: './node_modules/dicom-microscopy-viewer/dist/dynamic-import/dicom-microscopy-viewer',
+              from: './node_modules/dicom-microscopy-viewer/dist/dynamic-import',
               to: './static/js'
             }
           ]
