@@ -1,3 +1,4 @@
+// skipcq: JS-C1003
 import * as dcmjs from 'dcmjs'
 
 export type DicomWebManagerErrorHandler = (
@@ -108,5 +109,10 @@ export default interface AppConfig {
     disabled?: boolean | string[]
     top?: number
     duration?: number
+  }
+  logger?: {
+    level?: 'DEBUG' | 'LOG' | 'WARN' | 'ERROR' | 'NONE'
+    enableInProduction?: boolean
+    enableInDevelopment?: boolean
   }
 }
