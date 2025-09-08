@@ -1,6 +1,8 @@
 declare module 'dicom-microscopy-viewer' {
 
+  // skipcq: JS-C1003
   import * as dwc from 'dicomweb-client'
+  // skipcq: JS-C1003
   import * as dcmjs from 'dcmjs'
   import { CustomError } from '../../src/utils/CustomError'
 
@@ -12,6 +14,7 @@ declare module 'dicom-microscopy-viewer' {
       metadata: metadata.VLWholeSlideMicroscopyImage[]
       debug?: boolean
       preload?: boolean
+      skipThumbnails?: boolean
       controls: string[]
       annotationOptions?: object
       errorInterceptor?: (error: CustomError) => void
@@ -68,6 +71,7 @@ declare module 'dicom-microscopy-viewer' {
       get isSnapInteractionActive (): boolean
       activateTranslateInteraction (options: object): void
       deactivateTranslateInteraction (): void
+      buildPaletteColorLookupTable (options: object): color.PaletteColorLookupTable
       get isTranslateInteractionActive (): boolean
       getAllROIs (): roi.ROI[]
       removeAllROIs (): void
@@ -131,6 +135,7 @@ declare module 'dicom-microscopy-viewer' {
         }
       ): void
       hideOpticalPath (opticalPathIdentifier: string): void
+      zoomToROI (roiUID: string): void
       isOpticalPathVisible (opticalPathIdentifier: string): boolean
       activateOpticalPath (opticalPathIdentifier: string): void
       deactivateOpticalPath (opticalPathIdentifier: string): void
@@ -222,8 +227,8 @@ declare module 'dicom-microscopy-viewer' {
       getAnnotationGroupMetadata (
         annotationGroupUID: string
       ): metadata.MicroscopyBulkSimpleAnnotations
-      toggleICCProfiles(): void;
-      getICCProfiles(): any[];
+      toggleICCProfiles (): void;
+      getICCProfiles (): any[];
     }
 
     export interface OverviewImageViewerOptions {
@@ -789,6 +794,13 @@ declare module 'dicom-microscopy-viewer' {
       greenSegmentedData?: Unit8Array|Unit16Array
       blueSegmentedData?: Unit8Array|Unit16Array
     }
+
+    export interface BuildPaletteColorLookupTableOptions {
+      data: number[][]
+      firstValueMapped: number
+    }
+
+    export function buildPaletteColorLookupTable (options: BuildPaletteColorLookupTableOptions): PaletteColorLookupTable
 
     export class PaletteColorLookupTable {
       constructor (options: PaletteColorLookupTableOptions)

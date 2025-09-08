@@ -1,4 +1,5 @@
 import React from 'react'
+// skipcq: JS-C1003
 import * as dmv from 'dicom-microscopy-viewer'
 import { Menu, Switch } from 'antd'
 import { FaEye, FaEyeSlash } from 'react-icons/fa'
@@ -13,7 +14,7 @@ interface AnnotationListProps {
     roiUID: string
     isVisible: boolean
   }) => void
-  onSelection: ({ roiUID }: { roiUID: string }) => void
+  onSelection: (uid: string) => void
 }
 
 /**
@@ -43,7 +44,7 @@ class AnnotationList extends React.Component<AnnotationListProps, {}> {
   }
 
   handleMenuItemSelection (object: any): void {
-    this.props.onSelection({ roiUID: object.key })
+    this.props.onSelection(object.key)
   }
 
   render (): React.ReactNode {

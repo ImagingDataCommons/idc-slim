@@ -8,6 +8,7 @@ import {
 } from 'react-router-dom'
 import { Layout, message } from 'antd'
 import { FaSpinner } from 'react-icons/fa'
+// skipcq: JS-C1003
 import * as dwc from 'dicomweb-client'
 
 import AppConfig, { ServerSettings, ErrorMessageSettings } from './AppConfig'
@@ -15,6 +16,7 @@ import CaseViewer from './components/CaseViewer'
 import Header from './components/Header'
 import InfoPage from './components/InfoPage'
 import Worklist from './components/Worklist'
+import { ValidationProvider } from './contexts/ValidationContext'
 
 import { User, AuthManager } from './auth'
 import OidcManager from './auth/OidcManager'
@@ -42,15 +44,17 @@ function ParametrizedCaseViewer ({ clients, user, app, config }: {
   const enableAnnotationTools = !(config.disableAnnotationTools ?? false)
   const preload = config.preload ?? false
   return (
-    <CaseViewer
-      clients={clients}
-      user={user}
-      annotations={config.annotations}
-      preload={preload}
-      app={app}
-      enableAnnotationTools={enableAnnotationTools}
-      studyInstanceUID={studyInstanceUID}
-    />
+    <ValidationProvider clients={clients} studyInstanceUID={studyInstanceUID}>
+      <CaseViewer
+        clients={clients}
+        user={user}
+        annotations={config.annotations}
+        preload={preload}
+        app={app}
+        enableAnnotationTools={enableAnnotationTools}
+        studyInstanceUID={studyInstanceUID}
+      />
+    </ValidationProvider>
   )
 }
 
@@ -217,18 +221,24 @@ class App extends React.Component<AppProps, AppState> {
   constructor (props: AppProps) {
     super(props)
 
-    console.info('instatiate app')
-    console.info(`app is located at "${props.config.path}"`)
+    // Only log in development environment
+    if (process.env.NODE_ENV === 'development') {
+      console.info('instatiate app')
+      console.info(`app is located at "${props.config.path}"`)
+    }
+
     const { protocol, host } = window.location
     const baseUri = `${protocol}//${host}`
     const appUri = joinUrl(props.config.path, baseUri)
 
     const oidcSettings = props.config.oidc
     if (oidcSettings !== undefined) {
-      console.info(
-        'app uses the following OIDC configuration: ',
-        props.config.oidc
-      )
+      if (process.env.NODE_ENV === 'development') {
+        console.info(
+          'app uses the following OIDC configuration: ',
+          props.config.oidc
+        )
+      }
       this.auth = new OidcManager(appUri, oidcSettings)
     }
 
@@ -240,10 +250,13 @@ class App extends React.Component<AppProps, AppState> {
           'One server needs to be configured.')
       )
     }
-    console.info(
-      'app uses the following DICOMweb server configuration: ',
-      props.config.servers
-    )
+
+    if (process.env.NODE_ENV === 'development') {
+      console.info(
+        'app uses the following DICOMweb server configuration: ',
+        props.config.servers
+      )
+    }
 
     this.handleServerSelection = this.handleServerSelection.bind(this)
 
@@ -293,17 +306,18 @@ class App extends React.Component<AppProps, AppState> {
   }
 
   handleServerSelection ({ url }: { url: string }): void {
-    console.info('select DICOMweb server: ', url)
-    if (url === '' || window.localStorage.getItem('slim_server_selection_mode') === 'default') {
+    const trimmedUrl = url.trim()
+    console.info('select DICOMweb server: ', trimmedUrl)
+    if (trimmedUrl === '' || window.localStorage.getItem('slim_server_selection_mode') === 'default') {
       this.setState({ clients: this.state.defaultClients })
       return
     }
-    window.localStorage.setItem('slim_selected_server', url)
+    window.localStorage.setItem('slim_selected_server', trimmedUrl)
     const tmpClient = new DicomWebManager({
       baseUri: '',
       settings: [{
         id: 'tmp',
-        url,
+        url: trimmedUrl,
         read: true,
         write: false
       }],
@@ -393,14 +407,14 @@ class App extends React.Component<AppProps, AppState> {
 
   componentDidMount (): void {
     const path = window.localStorage.getItem('slim_path')
-    if (path === null || path === '') {
+    if (path === null || path === undefined || path === '') {
       window.localStorage.setItem('slim_path', window.location.pathname)
       window.localStorage.setItem('slim_search', window.location.search)
     }
 
     // Restore cached server selection if it exists
     const cachedServerUrl = window.localStorage.getItem('slim_selected_server')
-    if (cachedServerUrl !== null && cachedServerUrl !== '') {
+    if (cachedServerUrl !== null && cachedServerUrl !== undefined && cachedServerUrl !== '') {
       this.handleServerSelection({ url: cachedServerUrl })
     }
 
