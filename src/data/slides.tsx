@@ -1,3 +1,4 @@
+// skipcq: JS-C1003
 import * as dmv from 'dicom-microscopy-viewer'
 import { CustomError, errorTypes } from '../utils/CustomError'
 import NotificationMiddleware, {
@@ -22,7 +23,7 @@ const areSameAcquisition = (
   image: dmv.metadata.VLWholeSlideMicroscopyImage,
   refImage: dmv.metadata.VLWholeSlideMicroscopyImage
 ): boolean => {
-  if (image.AcquisitionUID != null) {
+  if (image.AcquisitionUID !== null && image.AcquisitionUID !== undefined) {
     return image.AcquisitionUID === refImage.AcquisitionUID
   }
   return false
@@ -94,23 +95,19 @@ class Slide {
     const volumeImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
     const labelImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
     const overviewImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
-
     options.images.forEach((image) => {
       containerIdentifiers.add(image.ContainerIdentifier)
       seriesInstanceUIDs.add(image.SeriesInstanceUID)
       image.OpticalPathSequence.forEach(item => {
         opticalPathIdentifiers.add(item.OpticalPathIdentifier)
       })
-      if (image.AcquisitionUID != null) {
+      if (image.AcquisitionUID !== null && image.AcquisitionUID !== undefined) {
         acquisitionUIDs.add(image.AcquisitionUID)
       }
-      if (
-        hasImageFlavor(image, ImageFlavors.VOLUME) ||
-        hasImageFlavor(image, ImageFlavors.THUMBNAIL)
-      ) {
+      if (hasImageFlavor(image, ImageFlavors.VOLUME) || hasImageFlavor(image, ImageFlavors.THUMBNAIL)) {
         frameOfReferenceUIDs.VOLUME.add(image.FrameOfReferenceUID)
-        if (image.PyramidUID != null) {
-          for (const identifier in opticalPathIdentifiers) {
+        if (image.PyramidUID !== null && image.PyramidUID !== undefined) {
+          for (const identifier of Object.keys(opticalPathIdentifiers)) {
             pyramidUIDs.VOLUME[identifier].add(image.PyramidUID)
           }
         }
@@ -282,12 +279,11 @@ const createSlides = (
   const slideMetadata: SlideImageCollection[] = []
   images.forEach((series) => {
     if (series.length > 0) {
-      const volumeImages = series.filter((image) => {
-        return (
+      const volumeImages = series.filter(
+        (image) =>
           hasImageFlavor(image, ImageFlavors.VOLUME) ||
           hasImageFlavor(image, ImageFlavors.THUMBNAIL)
-        )
-      })
+      )
       if (volumeImages.length > 0) {
         const refImage = volumeImages[0]
         const filteredVolumeImages = volumeImages.filter((image) => {
