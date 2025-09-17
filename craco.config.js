@@ -72,6 +72,7 @@ module.exports = {
         'node_modules/(?!(ol|dicom-microscopy-viewer|dicomweb-client|@cornerstonejs|dicomicc|rbush|color-rgba|color-parse|color-name|color-space|quickselect|earcut)/)'
       ]
       config.moduleNameMapper = {
+        'dicom-microscopy-viewer': '<rootDir>/src/__mocks__/dicomMicroscopyViewerMock.js',
         '@cornerstonejs/codec-libjpeg-turbo-8bit/decodewasmjs': '@cornerstonejs/codec-libjpeg-turbo-8bit/dist/libjpegturbowasm_decode',
         '@cornerstonejs/codec-libjpeg-turbo-8bit/decodewasm': '@cornerstonejs/codec-libjpeg-turbo-8bit/dist/libjpegturbowasm_decode.wasm',
         '@cornerstonejs/codec-charls/decodewasmjs': '@cornerstonejs/codec-charls/dist/charlswasm_decode.js',
@@ -79,6 +80,8 @@ module.exports = {
         '@cornerstonejs/codec-openjpeg/decodewasmjs': '@cornerstonejs/codec-openjpeg/dist/openjpegwasm_decode.js',
         '@cornerstonejs/codec-openjpeg/decodewasm': '@cornerstonejs/codec-openjpeg/dist/openjpegwasm_decode.wasm'
       }
+      config.setupFilesAfterEnv = ['<rootDir>/src/setupTests.tsx']
+      config.testEnvironment = 'jsdom'
       return config
     }
   }
