@@ -1,5 +1,8 @@
+// skipcq: JS-C1003
 import * as dwc from 'dicomweb-client'
+// skipcq: JS-C1003
 import * as dcmjs from 'dcmjs'
+// skipcq: JS-C1003
 import * as dmv from 'dicom-microscopy-viewer'
 
 import { ServerSettings, DicomWebManagerErrorHandler } from './AppConfig'
@@ -34,7 +37,10 @@ export default class DicomWebManager implements dwc.api.DICOMwebClient {
       this.handleError = onError
     } else {
       this.handleError = (error, serverSettings) => {
-        console.error(error, serverSettings)
+        // Only log errors in development environment
+        if (process.env.NODE_ENV === 'development') {
+          console.error(error, serverSettings)
+        }
       }
     }
 

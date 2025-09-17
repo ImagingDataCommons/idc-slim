@@ -1,6 +1,7 @@
 
 window.config = {
   path: "/slim",
+  publicLibPath: "/slim/static/js/",
   /** This is an array, but we'll only use the first entry for now */
   servers: [
     {
