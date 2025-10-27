@@ -1,3 +1,26 @@
+# [0.44.0](https://github.com/ImagingDataCommons/slim/compare/v0.43.1...v0.44.0) (2025-10-27)
+
+
+### Features
+
+* Add Additional Metadata Fields to Patient, Specimen and Segment Panels ([#345](https://github.com/ImagingDataCommons/slim/issues/345)) ([61a3081](https://github.com/ImagingDataCommons/slim/commit/61a308143e827725fbd9bad65bf7bda2ab1e1d02))
+* Add color preview circles to annotation group items ([#344](https://github.com/ImagingDataCommons/slim/issues/344)) ([eb61284](https://github.com/ImagingDataCommons/slim/commit/eb61284aa1b58f94ca7b481ec393622cf2250d84))
+* Selector for seg ([#343](https://github.com/ImagingDataCommons/slim/issues/343)) ([f061971](https://github.com/ImagingDataCommons/slim/commit/f061971a7e0e3cff16deea3dec9cacfa0720d8ff))
+
+## [0.43.1](https://github.com/ImagingDataCommons/slim/compare/v0.43.0...v0.43.1) (2025-10-10)
+
+
+### Bug Fixes
+
+* Thumbnail fallback and multiple thumbnail using dicom tag browser ([#340](https://github.com/ImagingDataCommons/slim/issues/340)) ([6e8d4c4](https://github.com/ImagingDataCommons/slim/commit/6e8d4c40ddcd554fdf2edf5d7bb4a3b3a2f48b13))
+
+# [0.43.0](https://github.com/ImagingDataCommons/slim/compare/v0.42.4...v0.43.0) (2025-09-18)
+
+
+### Features
+
+* Update dicom tag browser to display label and overview images + bulkdata references ([#336](https://github.com/ImagingDataCommons/slim/issues/336)) ([3cd48ed](https://github.com/ImagingDataCommons/slim/commit/3cd48ed198370393d9b5b0da427e7035c40ab3c9))
+
 ## [0.42.4](https://github.com/ImagingDataCommons/slim/compare/v0.42.3...v0.42.4) (2025-09-06)
 
 
