@@ -107,6 +107,7 @@ export interface SlideViewerState {
   selectedMagnification?: number
   areRoisHidden: boolean
   selectedSeriesInstanceUID?: string
+  selectedSegmentationSeriesInstanceUID?: string
   pixelDataStatistics: {
     [opticalPathIdentifier: string]: {
       min: number
@@ -117,5 +118,6 @@ export interface SlideViewerState {
   loadingFrames: Set<string>
   isICCProfilesEnabled: boolean
   isSegmentationInterpolationEnabled: boolean
+  isParametricMapInterpolationEnabled: boolean
   customizedSegmentColors: { [segmentUID: string]: number[] }
 }
