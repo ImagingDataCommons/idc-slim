@@ -1,7 +1,16 @@
 [![DOI](https://zenodo.org/badge/335130719.svg)](https://zenodo.org/badge/latestdoi/335130719)
 [![Build Status](https://github.com/imagingdatacommons/slim/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/imagingdatacommons/slim/actions)
 
-# Slim: Interoperable slide microscopy viewer and annotation tool for imaging data science and computational pathology
+# Slim IDC fork
+
+## Upgrade process
+
+- Merge into master
+- It will get deployed into IDC dev tier automatically
+- Test in dev tier
+- If all good, update main
+
+## Slim: Interoperable slide microscopy viewer and annotation tool for imaging data science and computational pathology
 
 _Slim_ is a single-page application for interactive visualization and annotation of digital whole slide microscopy images and derived image analysis results in standard DICOM format.
 The application is based on the [dicom-microscopy-viewer](https://github.com/MGHComputationalPathology/dicom-microscopy-viewer) JavaScript library and runs fully client side without any custom server components.
