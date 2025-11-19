@@ -1,4 +1,6 @@
 import React from 'react'
+import debounce from 'lodash/debounce'
+import type { DebouncedFunc } from 'lodash'
 import { Layout, Space, Checkbox, Descriptions, Divider, Select, Tooltip, message, Menu, Row } from 'antd'
 import { CheckboxChangeEvent } from 'antd/es/checkbox'
 import { UndoOutlined } from '@ant-design/icons'
@@ -97,11 +99,17 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   private labelViewer?: dmv.viewer.LabelImageViewer
 
-  private hoveredRois = [] as dmv.roi.ROI[]
+  private hoveredRois = [] as Array<{ roi: dmv.roi.ROI, annotationGroupUID: string | null }>
 
   private lastPixel = [0, 0] as [number, number]
 
   private readonly keysDown = new Set<string>()
+
+  private readonly handlePointerMoveDebounced: DebouncedFunc<(event: CustomEventInit) => void>
+
+  private lastHoveredRoiSignature: string | null = null
+
+  private readonly annotationGroupMetadataCache = new Map<string, dmv.metadata.MicroscopyBulkSimpleAnnotations>()
 
   private readonly defaultRoiStyle: dmv.viewer.ROIStyleOptions = {
     stroke: {
@@ -246,13 +254,21 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       selectedMagnification: undefined,
       areRoisHidden: false,
       selectedSeriesInstanceUID: undefined,
+      selectedSegmentationSeriesInstanceUID: undefined,
       pixelDataStatistics: {},
       selectedPresentationStateUID: this.props.selectedPresentationStateUID,
       loadingFrames: new Set(),
       isICCProfilesEnabled: true,
-      isSegmentationInterpolationEnabled: true,
+      isSegmentationInterpolationEnabled: false,
+      isParametricMapInterpolationEnabled: true,
       customizedSegmentColors: {}
     }
+
+    this.handlePointerMoveDebounced = debounce(
+      this.handlePointerMoveEvent,
+      0,
+      { leading: true, trailing: true }
+    )
   }
 
   /**
@@ -1225,14 +1241,113 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     }
   }
 
-  setHoveredRoiAttributes = (hoveredRois: dmv.roi.ROI[]): void => {
+  setHoveredRoiAttributes = (hoveredRois: Array<{ roi: dmv.roi.ROI, annotationGroupUID: string | null }>): void => {
     const rois = this.volumeViewer.getAllROIs()
-    if (rois.length === 0) {
+
+    if (hoveredRois.length === 0) {
       this.setState({ hoveredRoiAttributes: [] })
       return
     }
 
-    const result = hoveredRois.map((roi) => {
+    const result = hoveredRois.map(({ roi, annotationGroupUID }) => {
+      // Handle bulk annotations
+      if (annotationGroupUID !== null && annotationGroupUID !== undefined) {
+        try {
+          let annotationGroupMetadata = this.annotationGroupMetadataCache.get(annotationGroupUID)
+          if (annotationGroupMetadata === undefined) {
+            annotationGroupMetadata = this.volumeViewer.getAnnotationGroupMetadata(annotationGroupUID)
+            this.annotationGroupMetadataCache.set(annotationGroupUID, annotationGroupMetadata)
+          }
+          const annotationGroupItem = annotationGroupMetadata.AnnotationGroupSequence.find(
+            (item) => item.AnnotationGroupUID === annotationGroupUID
+          )
+
+          if (annotationGroupItem != null) {
+            const attributes: Array<{ name: string, value: string }> = []
+
+            // Get Series Description for sorting
+            let seriesDescription = ''
+            if (annotationGroupMetadata.SeriesInstanceUID !== undefined && annotationGroupMetadata.SeriesInstanceUID !== null) {
+              seriesDescription = this.getSeriesDescription(annotationGroupMetadata.SeriesInstanceUID)
+              if (seriesDescription !== undefined && seriesDescription !== null && seriesDescription !== '') {
+                attributes.push({
+                  name: 'Series Description',
+                  value: seriesDescription
+                })
+              }
+            }
+
+            // Add Annotation Group Label
+            if (annotationGroupItem.AnnotationGroupLabel !== undefined && annotationGroupItem.AnnotationGroupLabel !== '') {
+              attributes.push({
+                name: 'Annotation Group Label',
+                value: annotationGroupItem.AnnotationGroupLabel
+              })
+            }
+
+            // Add Property Category if available
+            if (annotationGroupItem.AnnotationPropertyCategoryCodeSequence !== undefined &&
+                annotationGroupItem.AnnotationPropertyCategoryCodeSequence.length > 0) {
+              const propertyCategory = annotationGroupItem.AnnotationPropertyCategoryCodeSequence[0]
+              const categoryValue = propertyCategory.CodeMeaning !== undefined && propertyCategory.CodeMeaning !== ''
+                ? propertyCategory.CodeMeaning
+                : propertyCategory.CodeValue
+              attributes.push({
+                name: 'Property category',
+                value: categoryValue
+              })
+            }
+
+            // Add Property Type if available
+            if (annotationGroupItem.AnnotationPropertyTypeCodeSequence !== undefined &&
+                annotationGroupItem.AnnotationPropertyTypeCodeSequence.length > 0) {
+              const propertyType = annotationGroupItem.AnnotationPropertyTypeCodeSequence[0]
+              const typeValue = propertyType.CodeMeaning !== undefined && propertyType.CodeMeaning !== ''
+                ? propertyType.CodeMeaning
+                : propertyType.CodeValue
+              attributes.push({
+                name: 'Property type',
+                value: typeValue
+              })
+            }
+
+            // Extract annotation index from ROI UID (format: annotationGroupUID-annotationIndex)
+            // For bulk annotations, the UID format is annotationGroupUID-annotationIndex
+            const roiUid = roi.uid
+            let annotationIndex = 0
+            if (roiUid !== undefined && roiUid !== null && roiUid !== '' && roiUid.includes('-')) {
+              const uidParts = roiUid.split('-')
+              // The last part should be the annotation index
+              const lastPart = uidParts[uidParts.length - 1]
+              const parsedIndex = parseInt(lastPart, 10)
+              if (!isNaN(parsedIndex)) {
+                annotationIndex = parsedIndex
+              }
+            }
+
+            return {
+              index: annotationIndex + 1,
+              roiUid: roiUid,
+              attributes,
+              seriesDescription: seriesDescription
+            }
+          }
+        } catch (error) {
+          logger.warn(`Failed to get annotation group metadata for ${annotationGroupUID}:`, error)
+          // Fall through to SR annotation handling
+        }
+      }
+
+      // Handle SR annotations (existing logic)
+      if (rois.length === 0) {
+        return {
+          index: 0,
+          roiUid: roi.uid,
+          attributes: [],
+          seriesDescription: ''
+        }
+      }
+
       const attributes: Array<{ name: string, value: string }> = []
       const evaluations = roi.evaluations
       evaluations.forEach((
@@ -1279,24 +1394,32 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
 
       const index = (rois.findIndex((r) => r.uid === roi.uid) ?? 0) + 1
-      return { index, roiUid: roi.uid, attributes }
-    }, [] as Array<dcmjs.sr.valueTypes.CodeContentItem | dcmjs.sr.valueTypes.TextContentItem>)
+      return {
+        index,
+        roiUid: roi.uid,
+        attributes,
+        seriesDescription: ''
+      }
+    })
+
+    // Sort results: first by ROI index, then by series description
+    result.sort((a, b) => {
+      // First sort by ROI index
+      const indexComparison = a.index - b.index
+      if (indexComparison !== 0) {
+        return indexComparison
+      }
+      // Then sort by series description
+      const aDesc = (a.seriesDescription !== null && a.seriesDescription !== undefined && a.seriesDescription !== '') ? a.seriesDescription : ''
+      const bDesc = (b.seriesDescription !== null && b.seriesDescription !== undefined && b.seriesDescription !== '') ? b.seriesDescription : ''
+      return aDesc.localeCompare(bDesc)
+    })
 
     this.setState({ hoveredRoiAttributes: result })
   }
 
   clearHoveredRois = (): void => {
-    this.hoveredRois = [] as any
-  }
-
-  getUniqueHoveredRois = (newRoi: dmv.roi.ROI | null): dmv.roi.ROI[] => {
-    if (newRoi === null || newRoi === undefined) {
-      return this.hoveredRois
-    }
-    const allRois = [...this.hoveredRois, newRoi]
-    const uniqueIds = Array.from(new Set(allRois.map(roi => roi.uid)))
-    return uniqueIds.map(id => allRois.find(roi => roi.uid === id))
-      .filter((roi): roi is dmv.roi.ROI => roi !== undefined)
+    this.hoveredRois = []
   }
 
   isSamePixelAsLast = (event: MouseEvent): boolean => {
@@ -1304,7 +1427,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   onPointerMove = (event: CustomEventInit): void => {
-    const { feature: hoveredRoi, event: evt } = event.detail.payload
+    this.handlePointerMoveDebounced(event)
+  }
+
+  handlePointerMoveEvent = (event: CustomEventInit): void => {
+    const { features: featuresWithROIs, event: evt } = event.detail.payload
     const originalEvent = evt.originalEvent
 
     if (!this.isSamePixelAsLast(originalEvent)) {
@@ -1312,9 +1439,54 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       this.clearHoveredRois()
     }
 
-    this.hoveredRois = this.getUniqueHoveredRois(hoveredRoi)
+    // Extract unique ROIs from all features
+    const allRois: Array<{ roi: dmv.roi.ROI, annotationGroupUID: string | null }> = []
+    if (featuresWithROIs !== null && featuresWithROIs !== undefined && featuresWithROIs.length > 0) {
+      for (const item of featuresWithROIs) {
+        if (item.feature !== null && item.feature !== undefined) {
+          allRois.push({
+            roi: item.feature,
+            annotationGroupUID: item.annotationGroupUID !== null && item.annotationGroupUID !== undefined ? item.annotationGroupUID : null
+          })
+        }
+      }
+    }
+
+    // Get unique ROIs by UID
+    const uniqueRoiMap = new Map<string, { roi: dmv.roi.ROI, annotationGroupUID: string | null }>()
+    for (const item of allRois) {
+      if (!uniqueRoiMap.has(item.roi.uid)) {
+        uniqueRoiMap.set(item.roi.uid, item)
+      }
+    }
+
+    // Filter out non-visible ROIs
+    const visibleRois = Array.from(uniqueRoiMap.values()).filter(({ roi, annotationGroupUID }) => {
+      // For bulk annotations, check annotation group visibility
+      if (annotationGroupUID !== null && annotationGroupUID !== undefined) {
+        return this.state.visibleAnnotationGroupUIDs.has(annotationGroupUID)
+      }
+      // For SR annotations, check ROI visibility
+      return this.state.visibleRoiUIDs.has(roi.uid)
+    })
+
+    this.hoveredRois = visibleRois
 
     if (this.hoveredRois.length > 0) {
+      const roiSignature = this.hoveredRois
+        .map(({ roi, annotationGroupUID }) => `${roi.uid}:${annotationGroupUID ?? ''}`)
+        .sort()
+        .join('|')
+
+      if (this.lastHoveredRoiSignature === roiSignature && this.state.isHoveredRoiTooltipVisible) {
+        this.setState({
+          hoveredRoiTooltipX: originalEvent.clientX,
+          hoveredRoiTooltipY: originalEvent.clientY
+        })
+        return
+      }
+
+      this.lastHoveredRoiSignature = roiSignature
       this.setHoveredRoiAttributes(this.hoveredRois)
       this.setState({
         isHoveredRoiTooltipVisible: true,
@@ -1322,6 +1494,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         hoveredRoiTooltipY: originalEvent.clientY
       })
     } else {
+      this.lastHoveredRoiSignature = null
       this.setState({
         isHoveredRoiTooltipVisible: false
       })
@@ -1672,6 +1845,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     if (this.labelViewer !== null && this.labelViewer !== undefined) {
       this.labelViewer.cleanup()
     }
+    this.handlePointerMoveDebounced.cancel()
     window.removeEventListener('beforeunload', this.componentCleanup)
   }
 
@@ -2755,6 +2929,64 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     })
   }
 
+  handleSegmentationSeriesSelection = (value: string): void => {
+    // Hide all currently visible segments when selection changes
+    this.state.visibleSegmentUIDs.forEach(segmentUID => {
+      this.volumeViewer.hideSegment(segmentUID)
+    })
+
+    // Get all segments to determine which ones are in the new series
+    const segments = this.volumeViewer.getAllSegments()
+    const segmentMetadata: {
+      [segmentUID: string]: dmv.metadata.Segmentation[]
+    } = {}
+
+    // Group segments by series
+    const segmentsBySeries: {
+      [seriesUID: string]: dmv.segment.Segment[]
+    } = {}
+
+    segments.forEach((segment) => {
+      segmentMetadata[segment.uid] = this.volumeViewer.getSegmentMetadata(
+        segment.uid
+      )
+
+      // Get the series UID for this segment
+      const seriesUID = segmentMetadata[segment.uid]?.[0]?.SeriesInstanceUID ?? 'unknown'
+      if (!(seriesUID in segmentsBySeries)) {
+        segmentsBySeries[seriesUID] = []
+      }
+      segmentsBySeries[seriesUID].push(segment)
+    })
+
+    // Get segments for the selected series or all series
+    const selectedSeriesSegments = value === 'all'
+      ? segments
+      : (segmentsBySeries[value] ?? [])
+
+    // Determine if segments were visible before switching
+    const hadVisibleSegments = this.state.visibleSegmentUIDs.size > 0
+
+    // If segments were visible before switching, show all segments in the new series
+    const newVisibleSegmentUIDs = new Set<string>()
+    if (hadVisibleSegments && selectedSeriesSegments.length > 0) {
+      selectedSeriesSegments.forEach(segment => {
+        newVisibleSegmentUIDs.add(segment.uid)
+      })
+    }
+
+    // Update state with new visibility
+    this.setState({
+      selectedSegmentationSeriesInstanceUID: value,
+      visibleSegmentUIDs: newVisibleSegmentUIDs
+    })
+
+    // Show segments that should be visible in the new series
+    newVisibleSegmentUIDs.forEach(segmentUID => {
+      this.volumeViewer.showSegment(segmentUID)
+    })
+  }
+
   getSeriesDescription = (seriesInstanceUID: string): string => {
     // Get the study from DicomMetadataStore
     const study = DicomMetadataStore.getStudy(this.props.studyInstanceUID)
@@ -2790,6 +3022,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const checked = event.target.checked
     this.setState({ isSegmentationInterpolationEnabled: checked })
     ;(this.volumeViewer as any).toggleSegmentationInterpolation()
+  }
+
+  /**
+   * Handler that will toggle the parametric map interpolation, i.e., either
+   * enable or disable it, depending on its current state.
+   */
+  handleParametricMapInterpolationToggle = (event: CheckboxChangeEvent): void => {
+    const checked = event.target.checked
+    this.setState({ isParametricMapInterpolationEnabled: checked })
+    ;(this.volumeViewer as any).toggleParametricMapInterpolation()
   }
 
   formatAnnotation = (annotation: AnnotationCategoryAndType): void => {
@@ -3101,10 +3343,24 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const segmentMetadata: {
         [segmentUID: string]: dmv.metadata.Segmentation[]
       } = {}
+
+      // Group segments by series
+      const segmentsBySeries: {
+        [seriesUID: string]: dmv.segment.Segment[]
+      } = {}
+
       segments.forEach((segment, index) => {
         segmentMetadata[segment.uid] = this.volumeViewer.getSegmentMetadata(
           segment.uid
         )
+
+        // Get the series UID for this segment
+        const seriesUID = segmentMetadata[segment.uid]?.[0]?.SeriesInstanceUID ?? 'unknown'
+        if (segmentsBySeries[seriesUID] === undefined) {
+          segmentsBySeries[seriesUID] = []
+        }
+        segmentsBySeries[seriesUID].push(segment)
+
         if (getSegmentationType(segmentMetadata[segment.uid][0] as any) !== 'BINARY') {
           const defaultStyle = this.volumeViewer.getSegmentStyle(segment.uid)
           defaultSegmentStyles[segment.uid] = {
@@ -3136,16 +3392,62 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           })
         }
       })
+
+      // Initialize selected series if not set
+      if (this.state.selectedSegmentationSeriesInstanceUID === undefined && segments.length !== 0) {
+        this.setState({ selectedSegmentationSeriesInstanceUID: 'all' })
+      }
+
+      // Create dropdown options for series
+      const dropdownOptions = [
+        {
+          value: 'all',
+          label: `All Series (${segments.length} segments)`
+        },
+        ...Object.keys(segmentsBySeries).map(seriesUID => ({
+          value: seriesUID,
+          label: `${this.getSeriesDescription(seriesUID)} (${segmentsBySeries[seriesUID]?.length ?? 0} segments)`
+        }))
+      ]
+
+      // Get segments for the selected series or all series
+      const selectedSeriesSegments = this.state.selectedSegmentationSeriesInstanceUID === 'all'
+        ? segments
+        : (this.state.selectedSegmentationSeriesInstanceUID !== undefined
+            ? segmentsBySeries[this.state.selectedSegmentationSeriesInstanceUID] ?? []
+            : [])
+
       return (
         <Menu.SubMenu key='segmentations' title='Segmentations'>
-          <SegmentList
-            segments={segments}
-            metadata={segmentMetadata}
-            defaultSegmentStyles={defaultSegmentStyles}
-            visibleSegmentUIDs={this.state.visibleSegmentUIDs}
-            onSegmentVisibilityChange={this.handleSegmentVisibilityChange}
-            onSegmentStyleChange={this.handleSegmentStyleChange}
-          />
+          {/* Series Selection Dropdown */}
+          <div
+            style={{
+              paddingLeft: '14px',
+              paddingRight: '14px',
+              paddingTop: '7px',
+              paddingBottom: '7px'
+            }}
+          >
+            <Select
+              style={{ width: '100%' }}
+              placeholder='Select a series'
+              value={this.state.selectedSegmentationSeriesInstanceUID}
+              onChange={this.handleSegmentationSeriesSelection}
+              options={dropdownOptions}
+            />
+          </div>
+
+          {/* Display segments for the selected series */}
+          {selectedSeriesSegments.length > 0 && (
+            <SegmentList
+              segments={selectedSeriesSegments}
+              metadata={segmentMetadata}
+              defaultSegmentStyles={defaultSegmentStyles}
+              visibleSegmentUIDs={this.state.visibleSegmentUIDs}
+              onSegmentVisibilityChange={this.handleSegmentVisibilityChange}
+              onSegmentStyleChange={this.handleSegmentStyleChange}
+            />
+          )}
         </Menu.SubMenu>
       )
     }
@@ -3535,6 +3837,20 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     )
   }
 
+  private readonly getParametricMapInterpolationMenu = (): React.ReactNode => {
+    const mappings = this.volumeViewer.getAllParameterMappings()
+    return mappings.length > 0 && (
+      <div style={{ margin: '0.9rem' }}>
+        <Checkbox
+          checked={this.state.isParametricMapInterpolationEnabled}
+          onChange={this.handleParametricMapInterpolationToggle}
+        >
+          Parametric Map Interpolation
+        </Checkbox>
+      </div>
+    )
+  }
+
   render = (): React.ReactNode => {
     const { rois, segments, mappings, annotationGroups, annotations } = this.getDataFromViewer()
 
@@ -3554,6 +3870,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const selectedRoiInformation = this.getSelectedRoiInformation()
     const iccProfilesMenu = this.getICCProfilesMenu()
     const segmentationInterpolationMenu = this.getSegmentationInterpolationMenu()
+    const parametricMapInterpolationMenu = this.getParametricMapInterpolationMenu()
 
     if (segmentationMenu !== null && segmentationMenu !== undefined) {
       openSubMenuItems.push('segmentations')
@@ -3609,6 +3926,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           specimenMenu={specimenMenu}
           iccProfilesMenu={iccProfilesMenu}
           segmentationInterpolationMenu={segmentationInterpolationMenu}
+          parametricMapInterpolationMenu={parametricMapInterpolationMenu}
           equipmentMenu={equipmentMenu}
           opticalPathMenu={opticalPathMenu}
           presentationStateMenu={presentationStateMenu}
