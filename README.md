@@ -1,4 +1,6 @@
-# About
+# Slim IDC fork
+
+## Slim: Interoperable slide microscopy viewer and annotation tool for imaging data science and computational pathology
 
 This repository contains a fork of https://github.com/ImagingDataCommons/slim customized for the needs of Imaging Data Commons. It is periodically updated to track the releases of the upstream repository.
 
