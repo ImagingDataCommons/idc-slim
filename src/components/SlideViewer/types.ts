@@ -89,7 +89,7 @@ export interface SlideViewerState {
   isAnnotationModalVisible: boolean
   isSelectedRoiModalVisible: boolean
   isHoveredRoiTooltipVisible: boolean
-  hoveredRoiAttributes: Array<{index: number, roiUid: string, attributes: Array<{ name: string, value: string }>}>
+  hoveredRoiAttributes: Array<{index: number, roiUid: string, attributes: Array<{ name: string, value: string }>, seriesDescription?: string}>
   hoveredRoiTooltipX: number
   hoveredRoiTooltipY: number
   isReportModalVisible: boolean
@@ -107,6 +107,7 @@ export interface SlideViewerState {
   selectedMagnification?: number
   areRoisHidden: boolean
   selectedSeriesInstanceUID?: string
+  selectedSegmentationSeriesInstanceUID?: string
   pixelDataStatistics: {
     [opticalPathIdentifier: string]: {
       min: number
@@ -117,5 +118,6 @@ export interface SlideViewerState {
   loadingFrames: Set<string>
   isICCProfilesEnabled: boolean
   isSegmentationInterpolationEnabled: boolean
+  isParametricMapInterpolationEnabled: boolean
   customizedSegmentColors: { [segmentUID: string]: number[] }
 }

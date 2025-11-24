@@ -44,21 +44,29 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
 
   componentDidMount (): void {
     this.setState({ isLoading: true })
-    if (this.props.slide.overviewImages.length > 0) {
-      const metadata = this.props.slide.overviewImages[0]
+
+    /* Use OVERVIEW if available, otherwise fall back to THUMBNAIL */
+    const previewImages = this.props.slide.overviewImages.length > 0
+      ? this.props.slide.overviewImages
+      : this.props.slide.thumbnailImages
+
+    if (previewImages.length > 0) {
+      const metadata = previewImages[0]
       if (this.overviewViewportRef.current !== null && this.overviewViewportRef.current !== undefined) {
         this.overviewViewportRef.current.innerHTML = ''
+        const imageType = this.props.slide.overviewImages.length > 0 ? 'OVERVIEW' : 'THUMBNAIL'
         console.info(
-          'instantiate viewer for OVERVIEW image of slide ' +
+          `instantiate viewer for ${imageType} image of slide ` +
           `"${metadata.ContainerIdentifier}"`
         )
+        const resizeFactor = 1
         this.overviewViewer = new dmv.viewer.OverviewImageViewer({
           client: this.props.clients[
             StorageClasses.VL_WHOLE_SLIDE_MICROSCOPY_IMAGE
           ],
           disableInteractions: true,
           metadata,
-          resizeFactor: 1,
+          resizeFactor,
           errorInterceptor: (error: CustomError) => {
             NotificationMiddleware.onError(
               NotificationMiddlewareContext.DMV,
@@ -108,9 +116,12 @@ class SlideItem extends React.Component<SlideItemProps, SlideItemState> {
           selectable
         >
           <div style={{ position: 'relative', height: '100px' }}>
-            {this.props.slide.overviewImages.length > 0
+            {(this.props.slide.overviewImages.length > 0 || this.props.slide.thumbnailImages.length > 0)
               ? (
-                <div ref={this.overviewViewportRef} style={{ height: '100%' }} />
+                <div
+                  ref={this.overviewViewportRef}
+                  style={{ height: '100%' }}
+                />
                 )
               : (
                 <div style={{
