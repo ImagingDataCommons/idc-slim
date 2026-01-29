@@ -40,14 +40,11 @@ apt-get clean
 curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# See https://github.com/Joystream/helpdesk/issues/16
-#sudo apt remove cmdtest
-#sudo apt remove yarn
+# Install Bun
+curl -fsSL https://bun.sh/install | bash
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
 
-curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
-echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
-apt-get update
-apt-get install -y --no-install-suggests --no-install-recommends yarn
 apt-get clean
 
 echo "Libraries Installed"
