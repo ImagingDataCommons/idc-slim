@@ -32,7 +32,7 @@ apt-get install -y --no-install-suggests --no-install-recommends curl
 apt-get install -y --no-install-suggests --no-install-recommends dumb-init
 apt-get install -y --no-install-suggests --no-install-recommends gnupg
 apt-get install -y --no-install-suggests --no-install-recommends git
-#apt-get install -y --no-install-suggests --no-install-recommends nodejs
+apt-get install -y --no-install-suggests --no-install-recommends unzip
 apt-get install -y --no-install-suggests --no-install-recommends apt-transport-https
 
 apt-get clean
@@ -40,10 +40,9 @@ apt-get clean
 curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# Install Bun
+# Install Bun system-wide (to /usr/local so it's in PATH)
+export BUN_INSTALL=/usr/local
 curl -fsSL https://bun.sh/install | bash
-export BUN_INSTALL="$HOME/.bun"
-export PATH="$BUN_INSTALL/bin:$PATH"
 
 apt-get clean
 
