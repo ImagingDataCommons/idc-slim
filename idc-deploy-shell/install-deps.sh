@@ -32,7 +32,7 @@ apt-get install -y --no-install-suggests --no-install-recommends curl
 apt-get install -y --no-install-suggests --no-install-recommends dumb-init
 apt-get install -y --no-install-suggests --no-install-recommends gnupg
 apt-get install -y --no-install-suggests --no-install-recommends git
-#apt-get install -y --no-install-suggests --no-install-recommends nodejs
+apt-get install -y --no-install-suggests --no-install-recommends unzip
 apt-get install -y --no-install-suggests --no-install-recommends apt-transport-https
 
 apt-get clean
@@ -40,14 +40,10 @@ apt-get clean
 curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# See https://github.com/Joystream/helpdesk/issues/16
-#sudo apt remove cmdtest
-#sudo apt remove yarn
+# Install Bun system-wide (to /usr/local so it's in PATH)
+export BUN_INSTALL=/usr/local
+curl -fsSL https://bun.sh/install | bash
 
-curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add -
-echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list
-apt-get update
-apt-get install -y --no-install-suggests --no-install-recommends yarn
 apt-get clean
 
 echo "Libraries Installed"
