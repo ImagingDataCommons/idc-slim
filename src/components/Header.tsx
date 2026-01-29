@@ -1,6 +1,7 @@
 import {
   ApiOutlined,
   CheckOutlined,
+  CloudDownloadOutlined,
   FileSearchOutlined,
   InfoOutlined,
   SettingOutlined,
@@ -22,15 +23,13 @@ import {
   Tooltip,
   Typography,
 } from 'antd'
-import { CloudDownloadOutlined } from '@ant-design/icons'
 import type { RadioChangeEvent } from 'antd/es/radio'
 import { detect } from 'detect-browser'
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { v4 as uuidv4 } from 'uuid'
-import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
-import AppConfig from '../AppConfig'
 import appPackageJson from '../../package.json'
+import type AppConfig from '../AppConfig'
 import type { User } from '../auth'
 import type DicomWebManager from '../DicomWebManager'
 import NotificationMiddleware, {
@@ -40,6 +39,7 @@ import type { CustomError } from '../utils/CustomError'
 import { type RouteComponentProps, withRouter } from '../utils/router'
 import Button from './Button'
 import DicomTagBrowser from './DicomTagBrowser/DicomTagBrowser'
+import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
 
 const aboutModalCopyTooltips: [React.ReactNode, React.ReactNode] = [
   'Copy hash',
@@ -493,10 +493,8 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     Modal.info({
       title: 'Download Study or Series',
       width: 1000,
-      content: (
-        <DownloadStudySeriesDialog appConfig={appConfig} />
-      ),
-      onOk (): void {}
+      content: <DownloadStudySeriesDialog appConfig={appConfig} />,
+      onOk(): void {},
     })
   }
 
@@ -694,8 +692,10 @@ class Header extends React.Component<HeaderProps, HeaderState> {
                 {worklistButton}
                 <Button
                   icon={CloudDownloadOutlined}
-                  tooltip='Download Study/Series'
-                  onClick={() => this.handleDownloadButtonClick(this.props.appConfig)}
+                  tooltip="Download Study/Series"
+                  onClick={() =>
+                    this.handleDownloadButtonClick(this.props.appConfig)
+                  }
                 />
                 {infoButton}
                 {debugButton}
