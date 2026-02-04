@@ -1,15 +1,14 @@
-import React, { useCallback, useState } from 'react'
 import { PaperClipOutlined } from '@ant-design/icons'
-import AppConfig, { DownloadStudyDialogSettings } from '../AppConfig'
+import { useCallback, useState } from 'react'
+import type AppConfig from '../AppConfig'
+import type { DownloadStudyDialogSettings } from '../AppConfig'
 
 /**
  * If there's a downloadStudyDialogSettings in the appConfig object then it will return it, otherwise it will return the default settings
  * @param appConfig the object with all app config
  * @returns the downloadStudyDialogSettings config object
  */
-const getConfig = (
-  appConfig: AppConfig
-): DownloadStudyDialogSettings => {
+const getConfig = (appConfig: AppConfig): DownloadStudyDialogSettings => {
   if (appConfig.downloadStudyDialog != null) {
     return appConfig.downloadStudyDialog
   }
@@ -20,29 +19,33 @@ const getConfig = (
     instructions: [
       {
         command: 'pip install idc-index --upgrade',
-        label: 'First, install the idc-index python package:'
+        label: 'First, install the idc-index python package:',
       },
       {
         command: 'idc download {{StudyInstanceUID}}',
-        label: 'Then, to download the whole study, run:'
+        label: 'Then, to download the whole study, run:',
       },
       {
         command: 'idc download {{SeriesInstanceUID}}',
-        label: "Or, to download just the active viewport's series, run:"
-      }
-    ]
+        label: "Or, to download just the active viewport's series, run:",
+      },
+    ],
   }
 
   return defaultConfig
 }
 
 const DialogInstruction = ({
-  instruction
+  instruction,
 }: {
-  instruction: { command: string, label: string }
+  instruction: { command: string; label: string }
 }): JSX.Element => {
   const [message, setMessage] = useState('')
   const { command, label } = instruction
+
+  const resetState = useCallback((): void => {
+    setMessage('')
+  }, [])
 
   const copyToClipboard = useCallback(async () => {
     try {
@@ -56,15 +59,11 @@ const DialogInstruction = ({
         resetState()
       }, 500)
     }
-  }, [command])
-
-  const resetState = (): void => {
-    setMessage('')
-  }
+  }, [command, resetState])
 
   return (
     <div>
-      {typeof label === 'string' ? <section>{label}</section> : <></>}
+      {typeof label === 'string' ? <section>{label}</section> : null}
       <section
         style={{
           margin: '1rem 0',
@@ -73,7 +72,7 @@ const DialogInstruction = ({
           flexDirection: 'row',
           justifyContent: 'space-between',
           backgroundColor: '#EFFBFE',
-          alignItems: 'center'
+          alignItems: 'center',
         }}
       >
         {command}
@@ -82,20 +81,25 @@ const DialogInstruction = ({
             position: 'relative',
             display: 'flex',
             height: '2rem',
-            alignItems: 'center'
+            alignItems: 'center',
           }}
         >
-          {message !== ''
-            ? (
-                message
-              )
-            : (
-              <>
-                <div style={{ cursor: 'pointer' }} onClick={copyToClipboard}>
-                  <PaperClipOutlined />
-                </div>
-              </>
-              )}
+          {message !== '' ? (
+            message
+          ) : (
+            <button
+              type="button"
+              style={{
+                cursor: 'pointer',
+                background: 'none',
+                border: 'none',
+                padding: 0,
+              }}
+              onClick={copyToClipboard}
+            >
+              <PaperClipOutlined />
+            </button>
+          )}
         </div>
       </section>
     </div>
@@ -112,15 +116,19 @@ const getStudyAndSeriesInfo = (): {
   seriesInstanceUID: string
 } => {
   const urlParams = window.location.pathname.split('/')
-  const studiesIndex = urlParams.findIndex((param) => param === 'studies')
-  const seriesIndex = urlParams.findIndex((param) => param === 'series')
+  const studiesIndex = urlParams.indexOf('studies')
+  const seriesIndex = urlParams.indexOf('series')
   const studyInstanceUID = urlParams[studiesIndex + 1]
   const seriesInstanceUID = urlParams[seriesIndex + 1]
 
   return { studyInstanceUID, seriesInstanceUID }
 }
 
-const DownloadStudySeriesDialog = ({ appConfig }: { appConfig: AppConfig }): JSX.Element => {
+const DownloadStudySeriesDialog = ({
+  appConfig,
+}: {
+  appConfig: AppConfig
+}): JSX.Element => {
   const { studyInstanceUID, seriesInstanceUID } = getStudyAndSeriesInfo()
   const config = getConfig(appConfig)
 
@@ -129,14 +137,14 @@ const DownloadStudySeriesDialog = ({ appConfig }: { appConfig: AppConfig }): JSX
       text
         .replace(/\{\{StudyInstanceUID\}\}/g, studyInstanceUID)
         .replace(/\{\{SeriesInstanceUID\}\}/g, seriesInstanceUID),
-    [studyInstanceUID, seriesInstanceUID]
+    [studyInstanceUID, seriesInstanceUID],
   )
 
   const instructions = config.instructions.map((instruction) => {
     const { command, label } = instruction
     return {
       command: replaceVariables(command),
-      label: replaceVariables(label)
+      label: replaceVariables(label),
     }
   })
 
@@ -145,7 +153,7 @@ const DownloadStudySeriesDialog = ({ appConfig }: { appConfig: AppConfig }): JSX
       <h1>{config.description}</h1>
       <div
         style={{ marginTop: '0.5rem', padding: '0.5rem' }}
-        className='mt-2 p-2'
+        className="mt-2 p-2"
       >
         {instructions.map((instruction) => (
           <DialogInstruction
