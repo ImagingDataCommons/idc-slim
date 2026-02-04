@@ -12,6 +12,8 @@
 /coverage
 .env
 
+.cursorrules
+
 # production
 /build
 
@@ -28,7 +30,7 @@ public/config/*
 .env.production.local
 
 npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+bun-debug.log*
+bun-error.log*
 
 /.github
