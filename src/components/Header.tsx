@@ -46,6 +46,8 @@ const aboutModalCopyTooltips: [React.ReactNode, React.ReactNode] = [
   'Copied!',
 ]
 
+const DICOM_TAG_BROWSER_PATHS = ['/studies/', '/study/', '/projects/'] as const
+
 const aboutModalStyles: Record<string, React.CSSProperties> = {
   container: {
     textAlign: 'center',
@@ -402,7 +404,9 @@ class Header extends React.Component<HeaderProps, HeaderState> {
       for (let i = 0; i < errorNum; i++) {
         const category = this.state.errorCategory[i] as ObjectKey
         errorMsgs[category].push(
-          `${this.state.errorObj[i].message as string} (Source: ${this.state.errorObj[i].source})`,
+          `${this.state.errorObj[i].message as string} (Source: ${
+            this.state.errorObj[i].source
+          })`,
         )
       }
     }
@@ -619,8 +623,9 @@ class Header extends React.Component<HeaderProps, HeaderState> {
       </Badge>
     )
 
-    const showDicomTagBrowser =
-      this.props.location.pathname.includes('/studies/')
+    const showDicomTagBrowser = DICOM_TAG_BROWSER_PATHS.some((path) =>
+      this.props.location.pathname.includes(path),
+    )
 
     const dicomTagBrowserButton = showDicomTagBrowser ? (
       <Button
