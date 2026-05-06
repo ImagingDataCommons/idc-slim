@@ -1,10 +1,10 @@
 import {
   ApiOutlined,
+  BugOutlined,
   CheckOutlined,
   CloudDownloadOutlined,
   FileSearchOutlined,
   InfoOutlined,
-  SettingOutlined,
   StopOutlined,
   UnorderedListOutlined,
   UserOutlined,
@@ -31,12 +31,14 @@ import { v4 as uuidv4 } from 'uuid'
 import appPackageJson from '../../package.json'
 import type AppConfig from '../AppConfig'
 import type { User } from '../auth'
+import { SettingsButton } from '../contexts/SettingsContext'
 import type DicomWebManager from '../DicomWebManager'
 import NotificationMiddleware, {
   NotificationMiddlewareEvents,
 } from '../services/NotificationMiddleware'
 import type { CustomError } from '../utils/CustomError'
 import { type RouteComponentProps, withRouter } from '../utils/router'
+import { normalizeServerUrl } from '../utils/url'
 import Button from './Button'
 import DicomTagBrowser from './DicomTagBrowser/DicomTagBrowser'
 import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
@@ -206,12 +208,21 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     if (trimmedUrl === '') {
       return false
     }
-    try {
-      const urlObj = new URL(trimmedUrl)
-      return urlObj.protocol.startsWith('http') && urlObj.pathname.length > 0
-    } catch (_TypeError) {
-      return false
+    if (trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')) {
+      try {
+        const urlObj = new URL(trimmedUrl)
+        return urlObj.protocol.startsWith('http') && urlObj.pathname.length > 0
+      } catch (_TypeError) {
+        return false
+      }
     }
+    const pathNorm = trimmedUrl.startsWith('/') ? trimmedUrl : `/${trimmedUrl}`
+    return (
+      pathNorm.includes('/projects/') &&
+      pathNorm.includes('/locations/') &&
+      pathNorm.includes('/datasets/') &&
+      pathNorm.includes('/dicomStores/')
+    )
   }
 
   static handleUserMenuButtonClick(e: React.SyntheticEvent): void {
@@ -418,7 +429,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     )
 
     const showWarningCount = (warncount: number): JSX.Element => (
-      <Badge color="green" count={warncount} />
+      <Badge color={warncount > 0 ? 'green' : undefined} count={warncount} />
     )
 
     Modal.info({
@@ -551,15 +562,21 @@ class Header extends React.Component<HeaderProps, HeaderState> {
 
     const url = this.state.selectedServerUrl?.trim()
     let closeModal = false
+    let resolvedUrl: string | undefined
     if (url !== null && url !== undefined && url !== '') {
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        this.props.onServerSelection({ url })
+      if (this.isValidServerUrl(url)) {
+        resolvedUrl = normalizeServerUrl(url)
+        this.props.onServerSelection({ url: resolvedUrl })
         closeModal = true
       }
     }
     this.setState({
       isServerSelectionModalVisible: !closeModal,
       isServerSelectionDisabled: !closeModal,
+      ...(closeModal &&
+        resolvedUrl !== undefined && {
+          selectedServerUrl: resolvedUrl,
+        }),
     })
   }
 
@@ -610,12 +627,12 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     const debugButton = (
       <Badge count={this.state.errorObj.length} style={{ zIndex: 1000 }}>
         <Badge
-          color="green"
+          color={this.state.warnings.length > 0 ? 'green' : undefined}
           count={this.state.warnings.length}
           style={{ zIndex: 1001 }}
         >
           <Button
-            icon={SettingOutlined}
+            icon={BugOutlined}
             tooltip="Debug info"
             onClick={this.handleDebugButtonClick}
           />
@@ -649,10 +666,9 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     const logoUrl = `${process.env.PUBLIC_URL}/logo.svg`
 
     const selectedServerUrl =
-      this.state.serverSelectionMode === 'custom'
-        ? this.state.selectedServerUrl?.trim()
-        : (this.props.clients?.default?.baseURL ??
-          this.props.defaultClients?.default?.baseURL)
+      this.props.clients?.default?.baseURL ??
+      this.props.defaultClients?.default?.baseURL ??
+      this.state.selectedServerUrl?.trim()
 
     const urlInfo =
       selectedServerUrl !== null &&
@@ -703,9 +719,10 @@ class Header extends React.Component<HeaderProps, HeaderState> {
                   }
                 />
                 {infoButton}
-                {debugButton}
                 {dicomTagBrowserButton}
                 {serverSelectionButton}
+                {debugButton}
+                <SettingsButton />
                 {user}
               </Space>
             </Col>
@@ -730,7 +747,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
           {this.state.serverSelectionMode === 'custom' && (
             <Tooltip title={this.state.selectedServerUrl?.trim()}>
               <Input
-                placeholder="Enter base URL of DICOMweb Study Service"
+                placeholder="Full URL or GCP path (e.g. /projects/.../dicomStores/.../dicomWeb)"
                 value={this.state.selectedServerUrl}
                 onChange={this.handleServerSelectionInput}
                 onPressEnter={this.handleServerSelection}
