@@ -3,7 +3,7 @@ import * as dcmjs from 'dcmjs'
 
 export type DicomWebManagerErrorHandler = (
   error: dwc.api.DICOMwebClientError,
-  serverSettings: ServerSettings,
+  serverSettings: ServerSettings
 ) => void
 
 export interface DICOMwebClientRequestHookMetadata {
@@ -115,5 +115,4 @@ export default interface AppConfig {
     enableInProduction?: boolean
     enableInDevelopment?: boolean
   }
-  enableMemoryMonitoring?: boolean
 }

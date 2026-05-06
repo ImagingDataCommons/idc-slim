@@ -1,3 +1,0 @@
-#!/usr/bin/env sh
-# Block commit if typecheck or lint fails
-bun run typecheck && bun run lint

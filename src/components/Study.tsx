@@ -1,11 +1,12 @@
-// skipcq: JS-C1003
-import type * as dmv from 'dicom-microscopy-viewer'
 import React from 'react'
-import { parseDate, parseTime } from '../utils/values'
+// skipcq: JS-C1003
+import * as dmv from 'dicom-microscopy-viewer'
+
 import Description from './Description'
+import { parseDate, parseTime } from '../utils/values'
 
 interface StudyProps {
-  metadata: dmv.metadata.Study | dmv.metadata.SOPClass
+  metadata: dmv.metadata.Study|dmv.metadata.SOPClass
 }
 
 /**
@@ -13,24 +14,24 @@ interface StudyProps {
  * common study-level attributes of contained DICOM Slide Microscopy images.
  */
 class Study extends React.Component<StudyProps> {
-  render(): React.ReactNode {
+  render (): React.ReactNode {
     const attributes = [
       {
         name: 'Accession #',
-        value: this.props.metadata.AccessionNumber,
+        value: this.props.metadata.AccessionNumber
       },
       {
         name: 'ID',
-        value: this.props.metadata.StudyID,
+        value: this.props.metadata.StudyID
       },
       {
         name: 'Date',
-        value: parseDate(this.props.metadata.StudyDate),
+        value: parseDate(this.props.metadata.StudyDate)
       },
       {
         name: 'Time',
-        value: parseTime(this.props.metadata.StudyTime),
-      },
+        value: parseTime(this.props.metadata.StudyTime)
+      }
     ]
     return <Description attributes={attributes} />
   }

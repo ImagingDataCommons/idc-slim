@@ -183,18 +183,15 @@ declare module 'dicom-microscopy-viewer' {
         mappingUID: string,
         styleOptions: {
           opacity?: number
-          limitValues?: number[]
           paletteColorLookupTable?: color.PaletteColorLookupTable
         }
       ): void
       getParameterMappingDefaultStyle (mappingUID: string): {
         opacity: number
-        limitValues: number[]
         paletteColorLookupTable: color.PaletteColorLookupTable
       }
       getParameterMappingStyle (mappingUID: string): {
         opacity: number
-        limitValues: number[]
         paletteColorLookupTable: color.PaletteColorLookupTable
       }
       isParameterMappingVisible (mappingUID: string): boolean
@@ -787,22 +784,6 @@ declare module 'dicom-microscopy-viewer' {
   }
 
   declare namespace color {
-    export const ColormapNames: {
-      readonly VIRIDIS: string
-      readonly INFERNO: string
-      readonly MAGMA: string
-      readonly GRAY: string
-      readonly BLUE_RED: string
-      readonly PHASE: string
-      readonly PORTLAND: string
-      readonly HOT: string
-    }
-
-    export function createColormap (options: {
-      name: string
-      bins: number
-    }): number[][]
-
     export interface PaletteColorLookupTableOptions {
       uid: string
       redDescriptor: number[]

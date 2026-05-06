@@ -4,8 +4,7 @@ import { Logger, LogLevel } from './logger'
 const mockWindowConfig = (config: any): void => {
   Object.defineProperty(window, 'config', {
     value: config,
-    writable: true,
-    configurable: true,
+    writable: true
   })
 }
 

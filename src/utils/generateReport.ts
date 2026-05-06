@@ -1,11 +1,11 @@
-import { data, sr } from 'dcmjs'
-import type * as dmv from 'dicom-microscopy-viewer'
-import type { roi } from 'dicom-microscopy-viewer'
-import type { User } from '../auth'
-import NotificationMiddleware, {
-  NotificationMiddlewareContext,
-} from '../services/NotificationMiddleware'
+import { roi, metadata } from 'dicom-microscopy-viewer'
+import { sr, data } from 'dcmjs'
+
 import { CustomError, errorTypes } from './CustomError'
+import NotificationMiddleware, {
+  NotificationMiddlewareContext
+} from '../services/NotificationMiddleware'
+import { User } from '../auth'
 
 interface AppInfo {
   name: string
@@ -19,17 +19,14 @@ const generateReport = ({
   metadata,
   user,
   app,
-  visibleRoiUIDs,
+  visibleRoiUIDs
 }: {
   rois: roi.ROI[]
-  metadata: dmv.metadata.VLWholeSlideMicroscopyImage[]
+  metadata: metadata.VLWholeSlideMicroscopyImage[]
   user: User | undefined
   app: AppInfo
   visibleRoiUIDs: Set<string>
-}): {
-  isReportModalVisible: boolean
-  generatedReport: dmv.metadata.Comprehensive3DSR
-} => {
+}): { isReportModalVisible: boolean, generatedReport: metadata.Comprehensive3DSR } => {
   // Metadata should be sorted such that the image with the highest
   // resolution is the last item in the array.
   const refImage = metadata[metadata.length - 1]
@@ -42,24 +39,24 @@ const generateReport = ({
       NotificationMiddlewareContext.SLIM,
       new CustomError(
         errorTypes.VISUALIZATION,
-        'More than one specimen has been described for the slide',
-      ),
+        'More than one specimen has been described for the slide'
+      )
     )
   }
   const refSpecimen = refImage.SpecimenDescriptionSequence[0]
 
   console.debug('create Observation Context')
-  let observer: sr.templates.PersonObserverIdentifyingAttributes
+  let observer
 
   if (user !== undefined) {
     observer = new sr.templates.PersonObserverIdentifyingAttributes({
       name: user.name ?? 'ANONYMOUS',
-      loginName: user.email ?? '',
+      loginName: user.email ?? ''
     })
   } else {
     console.warn('no user information available')
     observer = new sr.templates.PersonObserverIdentifyingAttributes({
-      name: 'ANONYMOUS',
+      name: 'ANONYMOUS'
     })
   }
 
@@ -68,35 +65,34 @@ const generateReport = ({
       observerType: new sr.coding.CodedConcept({
         value: '121006',
         schemeDesignator: 'DCM',
-        meaning: 'Person',
+        meaning: 'Person'
       }),
-      observerIdentifyingAttributes: observer,
+      observerIdentifyingAttributes: observer
     }),
     observerDeviceContext: new sr.templates.ObserverContext({
       observerType: new sr.coding.CodedConcept({
         value: '121007',
         schemeDesignator: 'DCM',
-        meaning: 'Device',
+        meaning: 'Device'
       }),
-      observerIdentifyingAttributes:
-        new sr.templates.DeviceObserverIdentifyingAttributes({
-          uid: app.uid,
-          manufacturerName: 'MGH Computational Pathology',
-          modelName: app.name,
-        }),
+      observerIdentifyingAttributes: new sr.templates.DeviceObserverIdentifyingAttributes({
+        uid: app.uid,
+        manufacturerName: 'MGH Computational Pathology',
+        modelName: app.name
+      })
     }),
     subjectContext: new sr.templates.SubjectContext({
       subjectClass: new sr.coding.CodedConcept({
         value: '121027',
         schemeDesignator: 'DCM',
-        meaning: 'Specimen',
+        meaning: 'Specimen'
       }),
       subjectClassSpecificContext: new sr.templates.SubjectContextSpecimen({
         uid: refSpecimen.SpecimenUID,
         identifier: refSpecimen.SpecimenIdentifier,
-        containerIdentifier: refImage.ContainerIdentifier,
-      }),
-    }),
+        containerIdentifier: refImage.ContainerIdentifier
+      })
+    })
   })
 
   console.debug('encode Imaging Measurements')
@@ -107,19 +103,17 @@ const generateReport = ({
       continue
     }
 
-    let findingType = roi.evaluations.find(
-      (item: sr.valueTypes.ContentItem) => {
-        return item.ConceptNameCodeSequence[0].CodeValue === '121071'
-      },
-    )
+    let findingType = roi.evaluations.find((item: sr.valueTypes.ContentItem) => {
+      return item.ConceptNameCodeSequence[0].CodeValue === '121071'
+    })
 
     if (findingType === undefined) {
       NotificationMiddleware.onError(
         NotificationMiddlewareContext.SLIM,
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
-          `No finding type was specified for ROI "${String(roi.uid)}"`,
-        ),
+          `No finding type was specified for ROI "${String(roi.uid)}"`
+        )
       )
     }
 
@@ -127,52 +121,49 @@ const generateReport = ({
 
     const trackingIdentifier = new sr.templates.TrackingIdentifier({
       uid: roi.properties.trackingUID ?? roi.uid,
-      identifier: `ROI #${i + 1}`,
+      identifier: `ROI #${i + 1}`
     })
 
-    const group =
-      new sr.templates.PlanarROIMeasurementsAndQualitativeEvaluations({
-        trackingIdentifier,
-        referencedRegion: new sr.contentItems.ImageRegion3D({
-          graphicType: roi.scoord3d.graphicType,
-          graphicData: roi.scoord3d.graphicData,
-          frameOfReferenceUID: roi.scoord3d.frameOfReferenceUID,
-        }),
-        findingType: new sr.coding.CodedConcept({
-          value: findingType.ConceptCodeSequence[0].CodeValue,
-          schemeDesignator:
-            findingType.ConceptCodeSequence[0].CodingSchemeDesignator,
-          meaning: findingType.ConceptCodeSequence[0].CodeMeaning,
-        }),
-        qualitativeEvaluations: roi.evaluations.filter(
-          (item: sr.valueTypes.ContentItem) => {
-            return item.ConceptNameCodeSequence[0].CodeValue !== '121071'
-          },
-        ),
-        measurements: roi.measurements,
-      })
+    const group = new sr.templates.PlanarROIMeasurementsAndQualitativeEvaluations({
+      trackingIdentifier,
+      referencedRegion: new sr.contentItems.ImageRegion3D({
+        graphicType: roi.scoord3d.graphicType,
+        graphicData: roi.scoord3d.graphicData,
+        frameOfReferenceUID: roi.scoord3d.frameOfReferenceUID
+      }),
+      findingType: new sr.coding.CodedConcept({
+        value: findingType.ConceptCodeSequence[0].CodeValue,
+        schemeDesignator: findingType.ConceptCodeSequence[0].CodingSchemeDesignator,
+        meaning: findingType.ConceptCodeSequence[0].CodeMeaning
+      }),
+      qualitativeEvaluations: roi.evaluations.filter((item: sr.valueTypes.ContentItem) => {
+        return item.ConceptNameCodeSequence[0].CodeValue !== '121071'
+      }),
+      measurements: roi.measurements
+    })
 
     const measurements = group as sr.valueTypes.ContainerContentItem[]
     measurements[0].ContentTemplateSequence = [
       {
         MappingResource: 'DCMR',
-        TemplateIdentifier: '1410',
-      },
+        TemplateIdentifier: '1410'
+      }
     ]
     imagingMeasurements.push(...measurements)
   }
 
   console.debug('create Measurement Report document content')
   const measurementReport = new sr.templates.MeasurementReport({
-    languageOfContentItemAndDescendants:
-      new sr.templates.LanguageOfContentItemAndDescendants({}),
+    languageOfContentItemAndDescendants: new sr.templates.LanguageOfContentItemAndDescendants(
+      {}
+    ),
     observationContext,
     procedureReported: new sr.coding.CodedConcept({
       value: '112703',
       schemeDesignator: 'DCM',
-      meaning: 'Whole Slide Imaging',
+      meaning: 'Whole Slide Imaging'
     }),
-    imagingMeasurements,
+    imagingMeasurements
   })
 
   console.info('create Comprehensive 3D SR document')
@@ -185,12 +176,12 @@ const generateReport = ({
     sopInstanceUID: data.DicomMetaDictionary.uid(),
     instanceNumber: 1,
     manufacturer: 'MGH Computational Pathology',
-    previousVersions: undefined, // TODO
+    previousVersions: undefined // TODO
   })
 
   return {
     isReportModalVisible: true,
-    generatedReport: dataset as dmv.metadata.Comprehensive3DSR,
+    generatedReport: dataset as metadata.Comprehensive3DSR
   }
 }
 

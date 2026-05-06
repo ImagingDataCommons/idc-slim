@@ -1,27 +1,27 @@
 // skipcq: JS-C1003
-import type * as dmv from 'dicom-microscopy-viewer'
-import NotificationMiddleware, {
-  NotificationMiddlewareContext,
-} from '../services/NotificationMiddleware'
+import * as dmv from 'dicom-microscopy-viewer'
 import { CustomError, errorTypes } from '../utils/CustomError'
+import NotificationMiddleware, {
+  NotificationMiddlewareContext
+} from '../services/NotificationMiddleware'
 
 enum ImageFlavors {
   VOLUME = 'VOLUME',
   LABEL = 'LABEL',
   OVERVIEW = 'OVERVIEW',
-  THUMBNAIL = 'THUMBNAIL',
+  THUMBNAIL = 'THUMBNAIL'
 }
 
 const hasImageFlavor = (
   image: dmv.metadata.VLWholeSlideMicroscopyImage,
-  imageFlavor: ImageFlavors,
+  imageFlavor: ImageFlavors
 ): boolean => {
   return image.ImageType[2] === imageFlavor
 }
 
 const areSameAcquisition = (
   image: dmv.metadata.VLWholeSlideMicroscopyImage,
-  refImage: dmv.metadata.VLWholeSlideMicroscopyImage,
+  refImage: dmv.metadata.VLWholeSlideMicroscopyImage
 ): boolean => {
   if (image.AcquisitionUID !== null && image.AcquisitionUID !== undefined) {
     return image.AcquisitionUID === refImage.AcquisitionUID
@@ -37,13 +37,11 @@ interface SlideImageCollection {
   labelImages: dmv.metadata.VLWholeSlideMicroscopyImage[]
   overviewImages: dmv.metadata.VLWholeSlideMicroscopyImage[]
   thumbnailImages: dmv.metadata.VLWholeSlideMicroscopyImage[]
-  seriesDescription?: string
 }
 
 interface SlideOptions {
   images: dmv.metadata.VLWholeSlideMicroscopyImage[]
   description?: string
-  seriesDescription?: string
 }
 
 /**
@@ -52,7 +50,6 @@ interface SlideOptions {
  */
 class Slide {
   readonly description: string
-  readonly seriesDescription: string
   readonly acquisitionUID: string | null | undefined
   readonly frameOfReferenceUID: string
   readonly containerIdentifier: string
@@ -70,14 +67,16 @@ class Slide {
    * @param options.images - Metadata of images associated with the slide
    * @param options.description - Description of the slide
    */
-  constructor(options: SlideOptions) {
+  constructor (
+    options: SlideOptions
+  ) {
     if (options.images.length === 0) {
       NotificationMiddleware.onError(
         NotificationMiddlewareContext.SLIM,
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
-          'Value of option "images" have been non-zero length.',
-        ),
+          'Value of option "images" have been non-zero length.'
+        )
       )
     }
 
@@ -88,12 +87,12 @@ class Slide {
     const frameOfReferenceUIDs = {
       VOLUME: new Set([] as string[]),
       LABEL: new Set([] as string[]),
-      OVERVIEW: new Set([] as string[]),
+      OVERVIEW: new Set([] as string[])
     }
     const pyramidUIDs: {
       [key: string]: { [opticalPathIdentifier: string]: Set<string> }
     } = {
-      VOLUME: {},
+      VOLUME: {}
     }
     const volumeImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
     const labelImages: dmv.metadata.VLWholeSlideMicroscopyImage[] = []
@@ -102,16 +101,13 @@ class Slide {
     options.images.forEach((image) => {
       containerIdentifiers.add(image.ContainerIdentifier)
       seriesInstanceUIDs.add(image.SeriesInstanceUID)
-      image.OpticalPathSequence.forEach((item) => {
+      image.OpticalPathSequence.forEach(item => {
         opticalPathIdentifiers.add(item.OpticalPathIdentifier)
       })
       if (image.AcquisitionUID !== null && image.AcquisitionUID !== undefined) {
         acquisitionUIDs.add(image.AcquisitionUID)
       }
-      if (
-        hasImageFlavor(image, ImageFlavors.VOLUME) ||
-        hasImageFlavor(image, ImageFlavors.THUMBNAIL)
-      ) {
+      if (hasImageFlavor(image, ImageFlavors.VOLUME) || hasImageFlavor(image, ImageFlavors.THUMBNAIL)) {
         if (hasImageFlavor(image, ImageFlavors.THUMBNAIL)) {
           thumbnailImages.push(image)
         }
@@ -136,8 +132,8 @@ class Slide {
         NotificationMiddlewareContext.SLIM,
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
-          'At least one VOLUME image must be provided for a slide.',
-        ),
+          'At least one VOLUME image must be provided for a slide.'
+        )
       )
     } else {
       if (acquisitionUIDs.size > 1) {
@@ -146,8 +142,8 @@ class Slide {
           new CustomError(
             errorTypes.ENCODINGANDDECODING,
             'All VOLUME images of a slide must have the same number of ' +
-              'Samples per Pixel.',
-          ),
+            'Samples per Pixel.'
+          )
         )
       }
 
@@ -161,18 +157,18 @@ class Slide {
           new CustomError(
             errorTypes.ENCODINGANDDECODING,
             'All VOLUME images of a slide must have the same number of ' +
-              'Samples per Pixel.',
-          ),
+            'Samples per Pixel.'
+          )
         )
       }
 
-      const isNotResampled = volumeImages.filter((image) => {
+      const isNotResampled = volumeImages.filter(image => {
         return image.ImageType[3] !== 'RESAMPLED'
       })
       if (isNotResampled.length > opticalPathIdentifiers.size) {
         console.warn(
           'the set of VOLUME images of a slide must contain only a single ' +
-            'image that has not been resampled per optical path',
+            'image that has not been resampled per optical path'
         )
       }
     }
@@ -190,8 +186,8 @@ class Slide {
         NotificationMiddlewareContext.SLIM,
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
-          'All images of a slide must have the same Container Identifier.',
-        ),
+          'All images of a slide must have the same Container Identifier.'
+        )
       )
     }
     this.containerIdentifier = [...containerIdentifiers][0]
@@ -202,8 +198,8 @@ class Slide {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'All VOLUME images of a slide must have ' +
-            'the same Frame of Reference UID.',
-        ),
+          'the same Frame of Reference UID.'
+        )
       )
     }
     this.frameOfReferenceUID = [...frameOfReferenceUIDs.VOLUME][0]
@@ -212,7 +208,7 @@ class Slide {
     if (Object.keys(pyramidUIDs.VOLUME).length > 0) {
       requirePyramidUID = true
     }
-    this.opticalPathIdentifiers.forEach((identifier) => {
+    this.opticalPathIdentifiers.forEach(identifier => {
       if (pyramidUIDs.VOLUME[identifier] != null) {
         if (pyramidUIDs.VOLUME[identifier].size > 1) {
           NotificationMiddleware.onError(
@@ -220,8 +216,8 @@ class Slide {
             new CustomError(
               errorTypes.ENCODINGANDDECODING,
               `All VOLUME images for optical path "${identifier}"` +
-                'must be part of the same multi-resolution pyramid.',
-            ),
+              'must be part of the same multi-resolution pyramid.'
+            )
           )
         } else if (pyramidUIDs.VOLUME[identifier].size === 1) {
           this.pyramidUIDs.push([...pyramidUIDs.VOLUME[identifier]][0])
@@ -231,9 +227,9 @@ class Slide {
             new CustomError(
               errorTypes.ENCODINGANDDECODING,
               `The VOLUME images for optical path "${identifier}" ` +
-                'lack the Pyramid UID, while the images for other optical paths ' +
-                'contain it.',
-            ),
+              'lack the Pyramid UID, while the images for other optical paths ' +
+              'contain it.'
+            )
           )
         }
       } else {
@@ -243,9 +239,9 @@ class Slide {
             new CustomError(
               errorTypes.ENCODINGANDDECODING,
               `The VOLUME images for optical path "${identifier}" ` +
-                'lack the Pyramid UID, while the images for other optical paths ' +
-                'contain it.',
-            ),
+              'lack the Pyramid UID, while the images for other optical paths ' +
+              'contain it.'
+            )
           )
         }
       }
@@ -257,8 +253,8 @@ class Slide {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'All VOLUME images of a slide must be part of the same  ' +
-            'acquisition and have the same Acquisition UID.',
-        ),
+          'acquisition and have the same Acquisition UID.'
+        )
       )
     } else if (acquisitionUIDs.size === 1) {
       this.acquisitionUID = [...acquisitionUIDs][0]
@@ -266,14 +262,14 @@ class Slide {
       this.acquisitionUID = null
     }
 
-    this.areVolumeImagesMonochrome =
+    this.areVolumeImagesMonochrome = (
       this.volumeImages[0].SamplesPerPixel === 1 &&
       this.volumeImages[0].PhotometricInterpretation === 'MONOCHROME2'
+    )
 
-    this.description =
+    this.description = (
       options.description !== undefined ? options.description : ''
-    this.seriesDescription =
-      options.seriesDescription !== undefined ? options.seriesDescription : ''
+    )
   }
 }
 
@@ -285,7 +281,7 @@ class Slide {
  * @returns Slides
  */
 const createSlides = (
-  images: dmv.metadata.VLWholeSlideMicroscopyImage[][],
+  images: dmv.metadata.VLWholeSlideMicroscopyImage[][]
 ): Slide[] => {
   const slideMetadata: SlideImageCollection[] = []
   images.forEach((series) => {
@@ -293,10 +289,10 @@ const createSlides = (
       const volumeImages = series.filter(
         (image) =>
           hasImageFlavor(image, ImageFlavors.VOLUME) ||
-          hasImageFlavor(image, ImageFlavors.THUMBNAIL),
+          hasImageFlavor(image, ImageFlavors.THUMBNAIL)
       )
-      const thumbnailImages = series.filter((image) =>
-        hasImageFlavor(image, ImageFlavors.THUMBNAIL),
+      const thumbnailImages = series.filter(
+        (image) => hasImageFlavor(image, ImageFlavors.THUMBNAIL)
       )
       if (volumeImages.length > 0) {
         const refImage = volumeImages[0]
@@ -331,11 +327,6 @@ const createSlides = (
         }
 
         if (slideMetadataIndex === -1) {
-          const seriesDescription =
-            refImage.SeriesDescription !== undefined &&
-            refImage.SeriesDescription !== ''
-              ? refImage.SeriesDescription
-              : ''
           const slideMetadataItem: SlideImageCollection = {
             acquisitionUID: refImage.AcquisitionUID,
             frameOfReferenceUID: refImage.FrameOfReferenceUID,
@@ -343,8 +334,7 @@ const createSlides = (
             volumeImages: filteredVolumeImages,
             labelImages: filteredLabelImages,
             overviewImages: filteredOverviewImages,
-            thumbnailImages,
-            seriesDescription,
+            thumbnailImages
           }
           slideMetadata.push(slideMetadataItem)
         } else {
@@ -363,9 +353,8 @@ const createSlides = (
       images: [
         ...item.volumeImages,
         ...item.labelImages,
-        ...item.overviewImages,
-      ],
-      seriesDescription: item.seriesDescription,
+        ...item.overviewImages
+      ]
     })
   })
   slides = slides.sort((a, b) => {
@@ -389,9 +378,9 @@ const createSlides = (
  * @param slide - Slide metadata object
  * @param image - Metadata of VOLUME, LABEL or OVERVIEW image instance
  */
-function _doesImageBelongToSlide(
+function _doesImageBelongToSlide (
   slide: SlideImageCollection,
-  image: dmv.metadata.VLWholeSlideMicroscopyImage,
+  image: dmv.metadata.VLWholeSlideMicroscopyImage
 ): boolean {
   if (
     slide.frameOfReferenceUID === image.FrameOfReferenceUID &&

@@ -1,9 +1,6 @@
-import type { Instance, Series } from '../services/DICOMMetadataStore'
+import { Instance, Series } from '../services/DICOMMetadataStore'
 
-function createSeriesMetadata(
-  SeriesInstanceUID: string,
-  defaultInstances?: Instance[],
-): Series {
+function createSeriesMetadata (SeriesInstanceUID: string, defaultInstances?: Instance[]): Series {
   const instances: Instance[] = []
   const instancesMap = new Map<string, Instance>()
 
@@ -16,10 +13,10 @@ function createSeriesMetadata(
     SeriesTime: '',
     ...defaultInstances?.[0],
     instances,
-    addInstance(newInstance: Instance) {
+    addInstance: function (newInstance: Instance) {
       this.addInstances([newInstance])
     },
-    addInstances: (newInstances: Instance[]) => {
+    addInstances: function (newInstances: Instance[]) {
       for (let i = 0, len = newInstances.length; i < len; i++) {
         const instance = newInstances[i]
 
@@ -29,7 +26,9 @@ function createSeriesMetadata(
         }
       }
     },
-    getInstance: (SOPInstanceUID: string) => instancesMap.get(SOPInstanceUID),
+    getInstance: function (SOPInstanceUID: string) {
+      return instancesMap.get(SOPInstanceUID)
+    }
   }
 }
 

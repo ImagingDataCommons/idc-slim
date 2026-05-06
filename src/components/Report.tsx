@@ -1,33 +1,32 @@
-import { Divider } from 'antd'
-// skipcq: JS-C1003
-import * as dcmjs from 'dcmjs'
+import React from 'react'
 // skipcq: JS-C1003
 import * as dmv from 'dicom-microscopy-viewer'
-import React from 'react'
+// skipcq: JS-C1003
+import * as dcmjs from 'dcmjs'
+import { Divider } from 'antd'
 import { v4 as generateUUID } from 'uuid'
-import NotificationMiddleware, {
-  NotificationMiddlewareContext,
-} from '../services/NotificationMiddleware'
-import { CustomError, errorTypes } from '../utils/CustomError'
-import { findContentItemsByName } from '../utils/sr'
+
 import Description from './Description'
 import Patient from './Patient'
 import Study from './Study'
+import { findContentItemsByName } from '../utils/sr'
+import { CustomError, errorTypes } from '../utils/CustomError'
+import NotificationMiddleware, {
+  NotificationMiddlewareContext
+} from '../services/NotificationMiddleware'
 
 export const hasValueType = (
   item: dcmjs.sr.valueTypes.ContentItem,
-  valueType: string,
+  valueType: string
 ): boolean => {
   return item.ValueType === valueType
 }
 
-const findMeasurementItems = ({
-  content,
-}: {
-  content: dcmjs.sr.valueTypes.ContentItem[]
-}): dcmjs.sr.valueTypes.NumContentItem[] => {
+const findMeasurementItems = (
+  { content }: { content: dcmjs.sr.valueTypes.ContentItem[] }
+): dcmjs.sr.valueTypes.NumContentItem[] => {
   const items: dcmjs.sr.valueTypes.NumContentItem[] = []
-  content.forEach((i) => {
+  content.forEach(i => {
     if (hasValueType(i, dcmjs.sr.valueTypes.ValueTypes.NUM)) {
       const measurement = i as dcmjs.sr.valueTypes.NumContentItem
       items.push(measurement)
@@ -36,13 +35,11 @@ const findMeasurementItems = ({
   return items
 }
 
-const findEvaluationItems = ({
-  content,
-}: {
-  content: dcmjs.sr.valueTypes.ContentItem[]
-}): dcmjs.sr.valueTypes.CodeContentItem[] => {
+const findEvaluationItems = (
+  { content }: { content: dcmjs.sr.valueTypes.ContentItem[] }
+): dcmjs.sr.valueTypes.CodeContentItem[] => {
   const items: dcmjs.sr.valueTypes.CodeContentItem[] = []
-  content.forEach((i) => {
+  content.forEach(i => {
     if (hasValueType(i, dcmjs.sr.valueTypes.ValueTypes.CODE)) {
       const evaluation = i as dcmjs.sr.valueTypes.CodeContentItem
       items.push(evaluation)
@@ -58,8 +55,8 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
     name: new dcmjs.sr.coding.CodedConcept({
       value: '126010',
       schemeDesignator: 'DCM',
-      meaning: 'Imaging Measurements',
-    }),
+      meaning: 'Imaging Measurements'
+    })
   })
   if (matches.length !== 1) {
     NotificationMiddleware.onError(
@@ -67,21 +64,20 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       new CustomError(
         errorTypes.ENCODINGANDDECODING,
         'Content item "Imaging Measurements" not found.' +
-          'Content of Comprehensive 3D SR document is not structured based on ' +
-          'TID 1500 "Measurement Report".',
-      ),
+        'Content of Comprehensive 3D SR document is not structured based on ' +
+        'TID 1500 "Measurement Report".'
+      )
     )
   }
-  const measurementsItem =
-    matches[0] as dcmjs.sr.valueTypes.ContainerContentItem
+  const measurementsItem = matches[0] as dcmjs.sr.valueTypes.ContainerContentItem
   // TID 1410 Planar ROI Measurements and Qualitative Evaluations
   const measurementGroupItems = findContentItemsByName({
     content: measurementsItem.ContentSequence,
     name: new dcmjs.sr.coding.CodedConcept({
       value: '125007',
       schemeDesignator: 'DCM',
-      meaning: 'Measurement Group',
-    }),
+      meaning: 'Measurement Group'
+    })
   })
 
   const rois: dmv.roi.ROI[] = []
@@ -94,8 +90,8 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '112040',
         schemeDesignator: 'DCM',
-        meaning: 'Tracking Unique Identifier',
-      }),
+        meaning: 'Tracking Unique Identifier'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -103,10 +99,10 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Tracking Unique Identifier" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured ' +
-            'based on TID 1500 "Measurement Report" -> ' +
-            'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured ' +
+          'based on TID 1500 "Measurement Report" -> ' +
+          'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".'
+        )
       )
     }
     const trackingUIDItem = items[0] as dcmjs.sr.valueTypes.UIDRefContentItem
@@ -116,8 +112,8 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121071',
         schemeDesignator: 'DCM',
-        meaning: 'Finding',
-      }),
+        meaning: 'Finding'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -125,10 +121,10 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Finding" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured ' +
-            'based on TID 1500 "Measurement Report" -> ' +
-            'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured ' +
+          'based on TID 1500 "Measurement Report" -> ' +
+          'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".'
+        )
       )
     }
 
@@ -137,8 +133,8 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '111001',
         schemeDesignator: 'DCM',
-        meaning: 'Algorithm Name',
-      }),
+        meaning: 'Algorithm Name'
+      })
     })
     if (items.length !== 0) {
       const algorithmNameItem = items[0] as dcmjs.sr.valueTypes.CodeContentItem
@@ -153,12 +149,11 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '111003',
         schemeDesignator: 'DCM',
-        meaning: 'Algorithm Version',
-      }),
+        meaning: 'Algorithm Version'
+      })
     })
     if (items.length !== 0) {
-      const algorithmVersionItem =
-        items[0] as dcmjs.sr.valueTypes.CodeContentItem
+      const algorithmVersionItem = items[0] as dcmjs.sr.valueTypes.CodeContentItem
       evaluations.push(algorithmVersionItem)
     }
 
@@ -167,8 +162,8 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '111030',
         schemeDesignator: 'DCM',
-        meaning: 'Image Region',
-      }),
+        meaning: 'Image Region'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -176,24 +171,18 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Image Region" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured ' +
-            'based on TID 1500 "Measurement Report" -> ' +
-            'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured ' +
+          'based on TID 1500 "Measurement Report" -> ' +
+          'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".'
+        )
       )
     }
     const regionItem = items[0] as dcmjs.sr.valueTypes.Scoord3DContentItem
-    let scoord3d:
-      | dmv.scoord3d.Point
-      | dmv.scoord3d.Polygon
-      | dmv.scoord3d.MultiPoint
-      | dmv.scoord3d.Polyline
-      | dmv.scoord3d.Ellipse
-      | dmv.scoord3d.Ellipsoid
+    let scoord3d: any
     if (regionItem.GraphicType === 'POINT') {
       scoord3d = new dmv.scoord3d.Point({
         frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-        coordinates: regionItem.GraphicData,
+        coordinates: regionItem.GraphicData
       })
     } else {
       const coordinates: number[][] = []
@@ -203,27 +192,27 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
       if (regionItem.GraphicType === 'POLYGON') {
         scoord3d = new dmv.scoord3d.Polygon({
           frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-          coordinates,
+          coordinates: coordinates
         })
       } else if (regionItem.GraphicType === 'MULTIPOINT') {
         scoord3d = new dmv.scoord3d.MultiPoint({
           frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-          coordinates,
+          coordinates: coordinates
         })
       } else if (regionItem.GraphicType === 'POLYLINE') {
         scoord3d = new dmv.scoord3d.Polyline({
           frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-          coordinates,
+          coordinates: coordinates
         })
       } else if (regionItem.GraphicType === 'ELLIPSE') {
         scoord3d = new dmv.scoord3d.Ellipse({
           frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-          coordinates,
+          coordinates: coordinates
         })
       } else if (regionItem.GraphicType === 'ELLIPSOID') {
         scoord3d = new dmv.scoord3d.Ellipsoid({
           frameOfReferenceUID: regionItem.ReferencedFrameOfReferenceUID,
-          coordinates,
+          coordinates: coordinates
         })
       } else {
         NotificationMiddleware.onError(
@@ -231,30 +220,31 @@ const getROIs = (report: dmv.metadata.Comprehensive3DSR): dmv.roi.ROI[] => {
           new CustomError(
             errorTypes.ENCODINGANDDECODING,
             'Content item "Image Region" has unknown graphic type ' +
-              `"${regionItem.GraphicType}". ` +
-              'Content of Comprehensive 3D SR document is not structured ' +
-              'based on TID 1500 "Measurement Report" -> ' +
-              'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".',
-          ),
+            `"${regionItem.GraphicType}". ` +
+            'Content of Comprehensive 3D SR document is not structured ' +
+            'based on TID 1500 "Measurement Report" -> ' +
+            'TID 1410 "Planar ROI Measurements and Qualitative Evaluations".'
+          )
         )
-        return
       }
     }
 
-    evaluations.push(...findEvaluationItems({ content: group.ContentSequence }))
+    evaluations.push(
+      ...findEvaluationItems({ content: group.ContentSequence })
+    )
     const measurements = findMeasurementItems({
-      content: group.ContentSequence,
+      content: group.ContentSequence
     })
 
     const roi = new dmv.roi.ROI({
-      scoord3d,
+      scoord3d: scoord3d,
       uid: generateUUID(),
       properties: {
         trackingUID: trackingUIDItem.UID,
-        observerType,
-        evaluations,
-        measurements,
-      },
+        observerType: observerType,
+        evaluations: evaluations,
+        measurements: measurements
+      }
     })
     rois.push(roi)
   })
@@ -278,14 +268,14 @@ class MeasurementReport {
 
   public ROIs: dmv.roi.ROI[] = []
 
-  constructor(report: dmv.metadata.Comprehensive3DSR) {
+  constructor (report: dmv.metadata.Comprehensive3DSR) {
     let items = findContentItemsByName({
       content: report.ContentSequence,
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121039',
         schemeDesignator: 'DCM',
-        meaning: 'Specimen UID',
-      }),
+        meaning: 'Specimen UID'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -293,14 +283,15 @@ class MeasurementReport {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Specimen UID" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured based on ' +
-            'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
-            'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured based on ' +
+          'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
+          'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".'
+        )
       )
     }
-    const specimenUIDItem =
+    const specimenUIDItem = (
       items[0] as unknown as dcmjs.sr.valueTypes.UIDRefContentItem
+    )
     this.SpecimenUID = specimenUIDItem.UID
 
     items = findContentItemsByName({
@@ -308,8 +299,8 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121041',
         schemeDesignator: 'DCM',
-        meaning: 'Specimen Identifier',
-      }),
+        meaning: 'Specimen Identifier'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -317,14 +308,15 @@ class MeasurementReport {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Specimen Identifier" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured based on ' +
-            'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
-            'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured based on ' +
+          'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
+          'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".'
+        )
       )
     }
-    const specimenIdItem =
+    const specimenIdItem = (
       items[0] as unknown as dcmjs.sr.valueTypes.TextContentItem
+    )
     this.SpecimenIdentifier = specimenIdItem.TextValue
 
     items = findContentItemsByName({
@@ -332,8 +324,8 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '111700',
         schemeDesignator: 'DCM',
-        meaning: 'Specimen Container Identifier',
-      }),
+        meaning: 'Specimen Container Identifier'
+      })
     })
     if (items.length === 0) {
       NotificationMiddleware.onError(
@@ -341,14 +333,15 @@ class MeasurementReport {
         new CustomError(
           errorTypes.ENCODINGANDDECODING,
           'Content item "Specimen Container Identifier" not found. ' +
-            'Content of Comprehensive 3D SR document is not structured based on ' +
-            'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
-            'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".',
-        ),
+          'Content of Comprehensive 3D SR document is not structured based on ' +
+          'TID 1500 "Measurement Report" -> TID 1001 "Observation Context" -> ' +
+          'TID 1006 "Subject Context" -> TID 1009 "Subject Context, Specimen".'
+        )
       )
     }
-    const containerIdItem =
+    const containerIdItem = (
       items[0] as unknown as dcmjs.sr.valueTypes.TextContentItem
+    )
     this.ContainerIdentifier = containerIdItem.TextValue
 
     items = findContentItemsByName({
@@ -356,12 +349,13 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121008',
         schemeDesignator: 'DCM',
-        meaning: 'Person Observer Name',
-      }),
+        meaning: 'Person Observer Name'
+      })
     })
     if (items.length !== 0) {
-      const personNameItem =
+      const personNameItem = (
         items[0] as unknown as dcmjs.sr.valueTypes.PNameContentItem
+      )
       this.PersonObserverName = personNameItem.PersonName
     }
 
@@ -370,12 +364,13 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '128774',
         schemeDesignator: 'DCM',
-        meaning: "Person Observer's Login Name",
-      }),
+        meaning: "Person Observer's Login Name"
+      })
     })
     if (items.length !== 0) {
-      const personLoginNameItem =
+      const personLoginNameItem = (
         items[0] as unknown as dcmjs.sr.valueTypes.TextContentItem
+      )
       this.PersonObserverLoginName = personLoginNameItem.TextValue
     }
 
@@ -384,12 +379,13 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121012',
         schemeDesignator: 'DCM',
-        meaning: 'Device Observer UID',
-      }),
+        meaning: 'Device Observer UID'
+      })
     })
     if (items.length > 0) {
-      const deviceUIDItem =
+      const deviceUIDItem = (
         items[0] as unknown as dcmjs.sr.valueTypes.UIDRefContentItem
+      )
       this.DeviceObserverUID = deviceUIDItem.UID
     }
 
@@ -398,12 +394,13 @@ class MeasurementReport {
       name: new dcmjs.sr.coding.CodedConcept({
         value: '121013',
         schemeDesignator: 'DCM',
-        meaning: 'Device Observer Name',
-      }),
+        meaning: 'Device Observer Name'
+      })
     })
     if (items.length !== 0) {
-      const deviceNameItem =
+      const deviceNameItem = (
         items[0] as unknown as dcmjs.sr.valueTypes.TextContentItem
+      )
       this.DeviceObserverName = deviceNameItem.TextValue
     }
 
@@ -419,67 +416,68 @@ interface ReportProps {
  * React component representing a DICOM SR document that displays the
  * document content (a selected subset of content items).
  */
-class Report extends React.Component<ReportProps, Record<string, never>> {
-  render(): React.ReactNode {
+class Report extends React.Component<ReportProps, {}> {
+  render (): React.ReactNode {
     const report = new MeasurementReport(this.props.dataset)
     const containerAttrs = [
       {
         name: 'ID',
-        value: report.ContainerIdentifier,
-      },
+        value: report.ContainerIdentifier
+      }
     ]
     const specimenAttrs = [
       {
         name: 'ID',
-        value: report.SpecimenIdentifier,
-      },
+        value: report.SpecimenIdentifier
+      }
     ]
     const observerAttrs = [
       {
         name: 'Name',
-        value: report.PersonObserverName,
-      },
+        value: report.PersonObserverName
+      }
     ]
-    const annotations = report.ROIs.map((roi, index): React.ReactNode => {
-      const id = `Region ${index + 1}`
-      const attrs: Array<{ name: string; value: string }> = []
-      roi.evaluations.forEach(
-        (
-          item:
-            | dcmjs.sr.valueTypes.CodeContentItem
-            | dcmjs.sr.valueTypes.TextContentItem,
+    const annotations = report.ROIs.map(
+      (roi, index): React.ReactNode => {
+        const id = `Region ${index + 1}`
+        const attrs: Array<{ name: string, value: string }> = []
+        roi.evaluations.forEach((
+          item: (
+            dcmjs.sr.valueTypes.CodeContentItem |
+            dcmjs.sr.valueTypes.TextContentItem
+          )
         ) => {
           if (item.ValueType === dcmjs.sr.valueTypes.ValueTypes.CODE) {
             item = item as dcmjs.sr.valueTypes.CodeContentItem
             attrs.push({
               name: item.ConceptNameCodeSequence[0].CodeMeaning,
-              value: item.ConceptCodeSequence[0].CodeMeaning,
+              value: item.ConceptCodeSequence[0].CodeMeaning
             })
           } else if (item.ValueType === dcmjs.sr.valueTypes.ValueTypes.TEXT) {
             item = item as dcmjs.sr.valueTypes.TextContentItem
             attrs.push({
               name: item.ConceptNameCodeSequence[0].CodeMeaning,
-              value: item.TextValue,
+              value: item.TextValue
             })
           }
-        },
-      )
-      return <Description key={roi.uid} header={id} attributes={attrs} />
-    })
+        })
+        return <Description key={roi.uid} header={id} attributes={attrs} />
+      }
+    )
 
     return (
       <div>
-        <Divider orientation="left">Patient</Divider>
+        <Divider orientation='left'>Patient</Divider>
         <Patient metadata={this.props.dataset} />
-        <Divider orientation="left">Case</Divider>
+        <Divider orientation='left'>Case</Divider>
         <Study metadata={this.props.dataset} />
-        <Divider orientation="left">Slide</Divider>
+        <Divider orientation='left'>Slide</Divider>
         <Description attributes={containerAttrs} />
-        <Divider orientation="left">Specimen</Divider>
+        <Divider orientation='left'>Specimen</Divider>
         <Description attributes={specimenAttrs} />
-        <Divider orientation="left">Observer</Divider>
+        <Divider orientation='left'>Observer</Divider>
         <Description attributes={observerAttrs} />
-        <Divider orientation="left">Annotations</Divider>
+        <Divider orientation='left'>Annotations</Divider>
         {annotations}
       </div>
     )

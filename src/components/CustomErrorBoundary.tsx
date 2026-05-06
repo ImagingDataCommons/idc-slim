@@ -1,6 +1,6 @@
-import { Collapse, Modal } from 'antd'
+import { Modal, Collapse } from 'antd'
+import { ErrorBoundary, FallbackProps } from 'react-error-boundary'
 import { useCallback } from 'react'
-import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
 
 /**
  * React's error boundary component to catch errors during rendering phase
@@ -11,7 +11,7 @@ import { ErrorBoundary, type FallbackProps } from 'react-error-boundary'
  */
 const CustomErrorBoundary = ({
   context,
-  children,
+  children
 }: {
   context: string
   children: JSX.Element
@@ -30,15 +30,13 @@ const CustomErrorBoundary = ({
         content: (
           <>
             <Collapse>
-              <Panel header="Component Stack" key="stack1">
+              <Panel header='Component Stack' key='stack1'>
                 {error.error.stack}
               </Panel>
             </Collapse>
           </>
         ),
-        onOk: () => {
-          Modal.destroyAll()
-        },
+        onOk (): void {}
       })
     }, [error.error.message, error.error.stack])
 
@@ -46,36 +44,27 @@ const CustomErrorBoundary = ({
       openModal()
     }, [openModal])
 
-    const handleKeyDown = useCallback(
-      (event: React.KeyboardEvent): void => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          openModal()
-        }
-      },
-      [openModal],
-    )
+    const handleKeyDown = useCallback((event: React.KeyboardEvent): void => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        openModal()
+      }
+    }, [openModal])
 
     return (
       <div>
         <p>
           There was an error in loading this page.{' '}
-          <button
-            type="button"
-            style={{
-              cursor: 'pointer',
-              color: '#0077FF',
-              background: 'none',
-              border: 'none',
-              padding: 0,
-              font: 'inherit',
-            }}
+          <span
+            style={{ cursor: 'pointer', color: '#0077FF' }}
             onClick={handleClick}
             onKeyDown={handleKeyDown}
-            aria-label="Show error details"
+            tabIndex={0}
+            role='button'
+            aria-label='Show error details'
           >
             Click for error details
-          </button>{' '}
+          </span>{' '}
         </p>
       </div>
     )
@@ -85,7 +74,7 @@ const CustomErrorBoundary = ({
     error: Error,
     info: {
       componentStack: string
-    },
+    }
   ): void => {
     // Only log errors in development environment
     if (process.env.NODE_ENV === 'development') {

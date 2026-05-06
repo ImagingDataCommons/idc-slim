@@ -1,31 +1,3 @@
-## [0.45.4](https://github.com/ImagingDataCommons/slim/compare/v0.45.3...v0.45.4) (2026-05-05)
-
-
-### Bug Fixes
-
-* Address auto toggle of ann group ([#382](https://github.com/ImagingDataCommons/slim/issues/382)) ([3e01b9e](https://github.com/ImagingDataCommons/slim/commit/3e01b9ed7be20511aab28a25c3bcb5258c845849))
-
-## [0.45.3](https://github.com/ImagingDataCommons/slim/compare/v0.45.2...v0.45.3) (2026-04-14)
-
-
-### Bug Fixes
-
-* **378/327/377/353:** DICOM tag browser, worklist (including Modalities in Study when QIDO omits it), overlay colormaps, header badge behavior, and test/tooling updates ([#379](https://github.com/ImagingDataCommons/slim/issues/379)) ([a7296e7](https://github.com/ImagingDataCommons/slim/commit/a7296e702002aa0b48c2681b3233aa8ccf018662))
-
-## [0.45.2](https://github.com/ImagingDataCommons/slim/compare/v0.45.1...v0.45.2) (2026-03-11)
-
-
-### Bug Fixes
-
-* Address runtime server selection for partial url ([#375](https://github.com/ImagingDataCommons/slim/issues/375)) ([5a7ce80](https://github.com/ImagingDataCommons/slim/commit/5a7ce80d9710bc2b7a06c0c30a2a1b8ddd190eba))
-
-## [0.45.1](https://github.com/ImagingDataCommons/slim/compare/v0.45.0...v0.45.1) (2025-12-17)
-
-
-### Bug Fixes
-
-* **about modal:** Address hash + disable select dialog for bulk ann + auto load ([#360](https://github.com/ImagingDataCommons/slim/issues/360)) ([2336601](https://github.com/ImagingDataCommons/slim/commit/2336601924fcc6c450b9478d16cec4d386419757))
-
 # [0.44.0](https://github.com/ImagingDataCommons/slim/compare/v0.43.1...v0.44.0) (2025-10-27)
 
 
