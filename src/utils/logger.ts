@@ -7,7 +7,7 @@ export enum LogLevel {
   LOG = 1,
   WARN = 2,
   ERROR = 3,
-  NONE = 4
+  NONE = 4,
 }
 
 interface LoggerConfig {
@@ -19,11 +19,12 @@ interface LoggerConfig {
 export class Logger {
   public config: LoggerConfig
 
-  constructor () {
-    // Get logger config from global config
-    const globalConfig = window.config?.logger
+  constructor() {
+    // Get logger config from global config (browser only; Bun/Jest may run without window)
+    const globalConfig =
+      typeof window !== 'undefined' ? window.config?.logger : undefined
     let configLevel = 'DEBUG'
-    if (globalConfig?.level !== undefined && globalConfig?.level !== null && globalConfig?.level !== '') {
+    if (globalConfig?.level != null && String(globalConfig.level) !== '') {
       configLevel = globalConfig.level as string
     } else if (process.env.NODE_ENV === 'production') {
       configLevel = 'ERROR'
@@ -32,14 +33,14 @@ export class Logger {
     this.config = {
       level: this.parseLogLevel(configLevel),
       enableInProduction: Boolean(globalConfig?.enableInProduction),
-      enableInDevelopment: globalConfig?.enableInDevelopment !== false
+      enableInDevelopment: globalConfig?.enableInDevelopment !== false,
     }
   }
 
   /**
    * Parse log level string to LogLevel enum
    */
-  public parseLogLevel (level: string): LogLevel {
+  public parseLogLevel(level: string): LogLevel {
     switch (level.toUpperCase()) {
       case 'DEBUG':
         return LogLevel.DEBUG
@@ -59,14 +60,14 @@ export class Logger {
   /**
    * Configure the logger
    */
-  configure (config: Partial<LoggerConfig>): void {
+  configure(config: Partial<LoggerConfig>): void {
     this.config = { ...this.config, ...config }
   }
 
   /**
    * Check if logging is enabled for the current environment and level
    */
-  private shouldLog (level: LogLevel): boolean {
+  private shouldLog(level: LogLevel): boolean {
     if (level < this.config.level) {
       return false
     }
@@ -81,7 +82,7 @@ export class Logger {
   /**
    * Log debug messages
    */
-  debug (...args: unknown[]): void {
+  debug(...args: unknown[]): void {
     if (this.shouldLog(LogLevel.DEBUG)) {
       console.debug(...args)
     }
@@ -90,7 +91,7 @@ export class Logger {
   /**
    * Log info messages
    */
-  log (...args: unknown[]): void {
+  log(...args: unknown[]): void {
     if (this.shouldLog(LogLevel.LOG)) {
       console.log(...args)
     }
@@ -99,7 +100,7 @@ export class Logger {
   /**
    * Log warning messages
    */
-  warn (...args: unknown[]): void {
+  warn(...args: unknown[]): void {
     if (this.shouldLog(LogLevel.WARN)) {
       console.warn(...args)
     }
@@ -108,7 +109,7 @@ export class Logger {
   /**
    * Log error messages
    */
-  error (...args: unknown[]): void {
+  error(...args: unknown[]): void {
     if (this.shouldLog(LogLevel.ERROR)) {
       console.error(...args)
     }

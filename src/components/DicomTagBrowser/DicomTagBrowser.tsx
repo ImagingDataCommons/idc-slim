@@ -1,14 +1,20 @@
-import { useState, useMemo, useEffect } from 'react'
-import { Select, Input, Slider, Typography, Table } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { EyeOutlined, SearchOutlined } from '@ant-design/icons'
+import { Input, Select, Slider, Table, Typography } from 'antd'
+import { useEffect, useMemo, useState } from 'react'
 
-import DicomWebManager from '../../DicomWebManager'
+import type DicomWebManager from '../../DicomWebManager'
 import './DicomTagBrowser.css'
-import { useSlides } from '../../hooks/useSlides'
-import { getSortedTags } from './dicomTagUtils'
-import { formatDicomDate } from '../../utils/formatDicomDate'
-import DicomMetadataStore, { Series, Study } from '../../services/DICOMMetadataStore'
+import { useActiveSeries } from '../../hooks/useActiveSeries'
 import { useDebounce } from '../../hooks/useDebounce'
+import { useSlides } from '../../hooks/useSlides'
+import DicomMetadataStore, {
+  EVENTS,
+  type Series,
+  type Study,
+} from '../../services/DICOMMetadataStore'
+import { formatDicomDate } from '../../utils/formatDicomDate'
+import { logger } from '../../utils/logger'
+import { getSortedTags, type TagInfo } from './dicomTagUtils'
 
 const { Option } = Select
 
@@ -20,7 +26,7 @@ interface DisplaySet {
   SeriesDescription?: string
   SeriesInstanceUID?: string
   Modality: string
-  images: any[]
+  images: unknown[]
 }
 
 interface TableDataItem {
@@ -35,14 +41,31 @@ interface TableDataItem {
 interface DicomTagBrowserProps {
   clients: { [key: string]: DicomWebManager }
   studyInstanceUID: string
+  seriesInstanceUID?: string
 }
 
-const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): JSX.Element => {
+function bucketContainsSopInstance(bucket: unknown[], sop: string): boolean {
+  if (sop === '') return false
+  for (const existing of bucket) {
+    if ((existing as Record<string, unknown>).SOPInstanceUID === sop) {
+      return true
+    }
+  }
+  return false
+}
+
+const DicomTagBrowser = ({
+  clients,
+  studyInstanceUID,
+  seriesInstanceUID = '',
+}: DicomTagBrowserProps): JSX.Element => {
   const { slides, isLoading } = useSlides({ clients, studyInstanceUID })
+  const activeSeriesUIDs = useActiveSeries()
   const [study, setStudy] = useState<Study | undefined>(undefined)
 
   const [displaySets, setDisplaySets] = useState<DisplaySet[]>([])
-  const [selectedDisplaySetInstanceUID, setSelectedDisplaySetInstanceUID] = useState(0)
+  const [selectedDisplaySetInstanceUID, setSelectedDisplaySetInstanceUID] =
+    useState(0)
   const [instanceNumber, setInstanceNumber] = useState(1)
   const [filterValue, setFilterValue] = useState('')
   const [expandedKeys, setExpandedKeys] = useState<string[]>([])
@@ -60,14 +83,26 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
   }, [debouncedSearchValue])
 
   useEffect(() => {
-    const handler = (event: any): void => {
-      const study: Study | undefined = Object.assign({}, DicomMetadataStore.getStudy(studyInstanceUID))
+    const handler = (_event: unknown): void => {
+      const study: Study | undefined = Object.assign(
+        {},
+        DicomMetadataStore.getStudy(studyInstanceUID),
+      )
       setStudy(study)
     }
-    const seriesAddedSubscription = DicomMetadataStore.subscribe(DicomMetadataStore.EVENTS.SERIES_ADDED, handler)
-    const instancesAddedSubscription = DicomMetadataStore.subscribe(DicomMetadataStore.EVENTS.INSTANCES_ADDED, handler)
+    const seriesAddedSubscription = DicomMetadataStore.subscribe(
+      EVENTS.SERIES_ADDED,
+      handler,
+    )
+    const instancesAddedSubscription = DicomMetadataStore.subscribe(
+      EVENTS.INSTANCES_ADDED,
+      handler,
+    )
 
-    const study = Object.assign({}, DicomMetadataStore.getStudy(studyInstanceUID))
+    const study = Object.assign(
+      {},
+      DicomMetadataStore.getStudy(studyInstanceUID),
+    )
     setStudy(study)
 
     return () => {
@@ -84,56 +119,74 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
 
     if (slides.length > 0) {
       displaySets = slides
-        .map((slide): DisplaySet[] => {
-          const slideDisplaySets: DisplaySet[] = []
+        .flatMap((slide): DisplaySet[] => {
+          /** One row per SeriesInstanceUID; volume/overview/label often share a series. */
+          const imagesBySeries = new Map<string, unknown[]>()
 
-          // Helper function to process any image type
-          const processImageType = (
-            images: any[] | undefined,
-            imageType: string
+          const addImages = (
+            images: unknown[] | undefined,
+            imageType: string,
           ): void => {
-            if (images?.[0] !== undefined) {
-              console.info(`Found ${images.length} ${imageType} image(s) for slide ${slide.containerIdentifier}`)
+            if (images?.[0] === undefined) return
+            logger.debug(
+              `Found ${images.length} ${imageType} image(s) for slide ${slide.containerIdentifier}`,
+            )
+            for (const image of images) {
+              const img = image as Record<string, unknown>
+              const seriesUID = img.SeriesInstanceUID as string | undefined
+              if (seriesUID === undefined || seriesUID === '') continue
 
-              const {
-                SeriesDate,
-                SeriesTime,
-                SeriesNumber,
-                SeriesInstanceUID,
-                SeriesDescription,
-                Modality
-              } = images[0]
-
-              processedSeries.push(SeriesInstanceUID)
-
-              const ds: DisplaySet = {
-                displaySetInstanceUID: index,
-                SeriesDate,
-                SeriesTime,
-                SeriesInstanceUID,
-                SeriesNumber: String(SeriesNumber),
-                SeriesDescription,
-                Modality,
-                images
+              let bucket = imagesBySeries.get(seriesUID)
+              if (bucket === undefined) {
+                processedSeries.push(seriesUID)
+                bucket = []
+                imagesBySeries.set(seriesUID, bucket)
               }
-              slideDisplaySets.push(ds)
-              index++
+
+              const sop =
+                typeof img.SOPInstanceUID === 'string' ? img.SOPInstanceUID : ''
+              if (!bucketContainsSopInstance(bucket, sop)) {
+                bucket.push(image)
+              }
             }
           }
 
-          // Process all image types
-          processImageType(slide.volumeImages, 'volume')
-          processImageType(slide.overviewImages, 'overview')
-          processImageType(slide.labelImages, 'label')
+          addImages(slide.volumeImages, 'volume')
+          addImages(slide.overviewImages, 'overview')
+          addImages(slide.labelImages, 'label')
 
+          const slideDisplaySets: DisplaySet[] = []
+          for (const images of imagesBySeries.values()) {
+            if (images[0] === undefined) continue
+            const img = images[0] as Record<string, unknown>
+            const {
+              SeriesDate,
+              SeriesTime,
+              SeriesNumber,
+              SeriesInstanceUID,
+              SeriesDescription,
+              Modality,
+            } = img
+            slideDisplaySets.push({
+              displaySetInstanceUID: index,
+              SeriesDate: SeriesDate as string | undefined,
+              SeriesTime: SeriesTime as string | undefined,
+              SeriesInstanceUID: SeriesInstanceUID as string,
+              SeriesNumber: String(SeriesNumber),
+              SeriesDescription: SeriesDescription as string | undefined,
+              Modality: Modality as string,
+              images,
+            })
+            index++
+          }
           return slideDisplaySets
         })
-        .flat()
         .filter((set): set is DisplaySet => set !== null && set !== undefined)
     }
 
     if (study !== undefined && study.series?.length > 0) {
-      derivedDisplaySets = study.series.filter(s => !processedSeries.includes(s.SeriesInstanceUID))
+      derivedDisplaySets = study.series
+        .filter((s) => !processedSeries.includes(s.SeriesInstanceUID))
         .map((series: Series): DisplaySet => {
           const ds: DisplaySet = {
             displaySetInstanceUID: index,
@@ -143,7 +196,7 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
             SeriesDescription: series.SeriesDescription,
             SeriesInstanceUID: series.SeriesInstanceUID,
             Modality: series.Modality,
-            images: series?.instances?.length > 0 ? series.instances : [series]
+            images: series?.instances?.length > 0 ? series.instances : [series],
           }
           index++
           return ds
@@ -153,15 +206,36 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
     setDisplaySets([...displaySets, ...derivedDisplaySets])
   }, [slides, study])
 
+  const sortedDisplaySets = useMemo(() => {
+    return [...displaySets].sort((a, b) => {
+      const aNum = Number(a.SeriesNumber)
+      const bNum = Number(b.SeriesNumber)
+      // Normalize non-numeric/missing values to Infinity to sort them last
+      const aSafe =
+        Number.isNaN(aNum) ||
+        a.SeriesNumber === undefined ||
+        a.SeriesNumber === ''
+          ? Infinity
+          : aNum
+      const bSafe =
+        Number.isNaN(bNum) ||
+        b.SeriesNumber === undefined ||
+        b.SeriesNumber === ''
+          ? Infinity
+          : bNum
+      return aSafe - bSafe
+    })
+  }, [displaySets])
+
   const displaySetList = useMemo(() => {
-    displaySets.sort((a, b) => Number(a.SeriesNumber) - Number(b.SeriesNumber))
-    return displaySets.map((displaySet, index) => {
+    return sortedDisplaySets.map((displaySet, index) => {
       const {
         SeriesDate = '',
         SeriesTime = '',
         SeriesNumber = '',
         SeriesDescription = '',
-        Modality = ''
+        Modality = '',
+        SeriesInstanceUID,
       } = displaySet
 
       const dateStr = `${SeriesDate}:${SeriesTime}`.split('.')[0]
@@ -170,68 +244,105 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
       return {
         value: index,
         label: `${SeriesNumber} (${Modality}): ${SeriesDescription}`,
-        description: displayDate
+        description: displayDate,
+        seriesInstanceUID: SeriesInstanceUID ?? '',
       }
     })
-  }, [displaySets])
+  }, [sortedDisplaySets])
+
+  useEffect(() => {
+    if (sortedDisplaySets.length === 0) return
+
+    if (seriesInstanceUID !== '') {
+      const matchingIndex = sortedDisplaySets.findIndex(
+        (displaySet) => displaySet.SeriesInstanceUID === seriesInstanceUID,
+      )
+      if (matchingIndex !== -1) {
+        setSelectedDisplaySetInstanceUID(matchingIndex)
+        setInstanceNumber(1)
+        return
+      }
+    }
+
+    setSelectedDisplaySetInstanceUID((currentIndex) => {
+      const needsReset =
+        currentIndex >= sortedDisplaySets.length || currentIndex < 0
+      return needsReset ? 0 : currentIndex
+    })
+  }, [seriesInstanceUID, sortedDisplaySets])
+
+  useEffect(() => {
+    const currentIndex = selectedDisplaySetInstanceUID
+    const needsReset =
+      currentIndex >= sortedDisplaySets.length || currentIndex < 0
+    if (needsReset && sortedDisplaySets.length > 0) {
+      setInstanceNumber(1)
+    }
+  }, [selectedDisplaySetInstanceUID, sortedDisplaySets.length])
 
   const showInstanceList =
-    displaySets[selectedDisplaySetInstanceUID]?.images.length > 1
+    sortedDisplaySets[selectedDisplaySetInstanceUID]?.images.length > 1
 
   const instanceSliderMarks = useMemo(() => {
-    if (displaySets[selectedDisplaySetInstanceUID] === undefined) return {}
-    const totalInstances = displaySets[selectedDisplaySetInstanceUID].images.length
+    if (sortedDisplaySets[selectedDisplaySetInstanceUID] === undefined)
+      return {}
+    const totalInstances =
+      sortedDisplaySets[selectedDisplaySetInstanceUID].images.length
 
-    // Create marks for first, middle, and last instances
     const marks: Record<number, string> = {
-      1: '1', // First
-      [Math.ceil(totalInstances / 2)]: String(Math.ceil(totalInstances / 2)), // Middle
-      [totalInstances]: String(totalInstances) // Last
+      1: '1',
+      [Math.ceil(totalInstances / 2)]: String(Math.ceil(totalInstances / 2)),
+      [totalInstances]: String(totalInstances),
     }
 
     return marks
-  }, [selectedDisplaySetInstanceUID, displaySets])
+  }, [selectedDisplaySetInstanceUID, sortedDisplaySets])
 
   const columns = [
     {
       title: 'Tag',
       dataIndex: 'tag',
       key: 'tag',
-      width: '30%'
+      width: '30%',
     },
     {
       title: 'VR',
       dataIndex: 'vr',
       key: 'vr',
-      width: '5%'
+      width: '5%',
     },
     {
       title: 'Keyword',
       dataIndex: 'keyword',
       key: 'keyword',
-      width: '30%'
+      width: '30%',
     },
     {
       title: 'Value',
       dataIndex: 'value',
       key: 'value',
-      width: '40%'
-    }
+      width: '40%',
+    },
   ]
 
   const tableData = useMemo(() => {
-    const transformTagsToTableData = (tags: any[], parentKey = ''): TableDataItem[] => {
+    const transformTagsToTableData = (
+      tags: TagInfo[],
+      parentKey = '',
+    ): TableDataItem[] => {
       return tags.map((tag, index) => {
         // Create a unique key using tag value if available, otherwise use index
-        const keyBase: string = tag.tag !== '' ? tag.tag.replace(/[(),]/g, '') : index.toString()
-        const currentKey: string = parentKey !== '' ? `${parentKey}-${keyBase}` : keyBase
+        const keyBase: string =
+          tag.tag !== '' ? tag.tag.replace(/[(),]/g, '') : index.toString()
+        const currentKey: string =
+          parentKey !== '' ? `${parentKey}-${keyBase}` : keyBase
 
         const item: TableDataItem = {
           key: currentKey,
           tag: tag.tag,
           vr: tag.vr,
           keyword: tag.keyword,
-          value: tag.value
+          value: tag.value,
         }
 
         if (tag.children !== undefined && tag.children.length > 0) {
@@ -242,11 +353,15 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
       })
     }
 
-    if (displaySets[selectedDisplaySetInstanceUID] === undefined) return []
-    const images = displaySets[selectedDisplaySetInstanceUID]?.images
+    if (sortedDisplaySets[selectedDisplaySetInstanceUID] === undefined)
+      return []
+    const images = sortedDisplaySets[selectedDisplaySetInstanceUID]?.images
     const sortedMetadata = Array.isArray(images)
       ? [...images].sort((a, b) => {
-          if (a.InstanceNumber !== undefined && b.InstanceNumber !== undefined) {
+          if (
+            a.InstanceNumber !== undefined &&
+            b.InstanceNumber !== undefined
+          ) {
             return Number(a.InstanceNumber) - Number(b.InstanceNumber)
           }
           return 0 // keep original order if either is missing InstanceNumber
@@ -255,7 +370,7 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
     const metadata = sortedMetadata[instanceNumber - 1]
     const tags = getSortedTags(metadata)
     return transformTagsToTableData(tags)
-  }, [instanceNumber, selectedDisplaySetInstanceUID, displaySets])
+  }, [instanceNumber, selectedDisplaySetInstanceUID, sortedDisplaySets])
 
   const filteredData = useMemo(() => {
     if (filterValue === undefined || filterValue === '') return tableData
@@ -272,10 +387,9 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
       )
     }
 
-    // First pass: find all matching nodes and their parent paths
     const findMatchingPaths = (
       node: TableDataItem,
-      parentPath: TableDataItem[] = []
+      parentPath: TableDataItem[] = [],
     ): TableDataItem[][] => {
       const currentPath = [...parentPath, node]
       let matchingPaths: TableDataItem[][] = []
@@ -284,38 +398,37 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
         matchingPaths.push(currentPath)
       }
 
-      if (node.children != null) {
-        node.children.forEach(child => {
-          const childPaths = findMatchingPaths(child, currentPath)
-          matchingPaths = [...matchingPaths, ...childPaths]
-        })
-      }
+      node.children?.forEach((child) => {
+        const childPaths = findMatchingPaths(child, currentPath)
+        matchingPaths = [...matchingPaths, ...childPaths]
+      })
 
       return matchingPaths
     }
 
-    // Find all paths that contain matches
-    const matchingPaths = tableData.flatMap(node => findMatchingPaths(node))
+    const matchingPaths = tableData.flatMap((node) => findMatchingPaths(node))
 
-    // Second pass: reconstruct the tree with matching paths
     const reconstructTree = (
       paths: TableDataItem[][],
-      level = 0
+      level = 0,
     ): TableDataItem[] => {
       if (paths.length === 0 || level >= paths[0].length) return []
 
-      const nodesAtLevel = new Map<string, {
-        node: TableDataItem
-        childPaths: TableDataItem[][]
-      }>()
+      const nodesAtLevel = new Map<
+        string,
+        {
+          node: TableDataItem
+          childPaths: TableDataItem[][]
+        }
+      >()
 
-      paths.forEach(path => {
+      paths.forEach((path) => {
         if (level < path.length) {
           const node = path[level]
           if (!nodesAtLevel.has(node.key)) {
             nodesAtLevel.set(node.key, {
               node: { ...node },
-              childPaths: []
+              childPaths: [],
             })
           }
           if (level + 1 < path.length) {
@@ -342,16 +455,21 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
   }
 
   return (
-    <div className='dicom-tag-browser'>
+    <div className="dicom-tag-browser">
       <div
         style={{
           width: '100%',
-          padding: '16px 20px 20px'
+          padding: '16px 20px 20px',
         }}
       >
         <div style={{ display: 'flex', gap: '24px', marginBottom: '32px' }}>
           <div style={{ flex: 1 }}>
-            <Typography.Text strong style={{ display: 'block', marginBottom: '8px' }}>Series</Typography.Text>
+            <Typography.Text
+              strong
+              style={{ display: 'block', marginBottom: '8px' }}
+            >
+              Series
+            </Typography.Text>
             <Select
               style={{ width: '100%' }}
               value={selectedDisplaySetInstanceUID}
@@ -359,37 +477,80 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
                 setSelectedDisplaySetInstanceUID(value)
                 setInstanceNumber(1)
               }}
-              optionLabelProp='label'
-              optionFilterProp='label'
+              optionLabelProp="label"
+              optionFilterProp="label"
             >
-              {displaySetList.map((item) => (
-                <Option key={item.value} value={item.value} label={item.label}>
-                  <div>
-                    <div>{item.label}</div>
+              {displaySetList.map((item) => {
+                const isActive = item.seriesInstanceUID
+                  ? activeSeriesUIDs.has(item.seriesInstanceUID)
+                  : false
+                return (
+                  <Option
+                    key={item.value}
+                    value={item.value}
+                    label={item.label}
+                  >
                     <div
-                      style={{ fontSize: '12px', color: 'rgba(0, 0, 0, 0.45)' }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 8,
+                        minWidth: 0,
+                      }}
                     >
-                      {item.description}
+                      <span
+                        style={{
+                          width: 16,
+                          flexShrink: 0,
+                          display: 'flex',
+                          justifyContent: 'center',
+                        }}
+                        title={isActive ? 'Active in viewport' : undefined}
+                      >
+                        {isActive ? (
+                          <EyeOutlined
+                            style={{ color: 'rgba(0, 0, 0, 0.65)' }}
+                          />
+                        ) : null}
+                      </span>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div>{item.label}</div>
+                        <div
+                          style={{
+                            fontSize: '12px',
+                            color: 'rgba(0, 0, 0, 0.45)',
+                          }}
+                        >
+                          {item.description}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </Option>
-              ))}
+                  </Option>
+                )
+              })}
             </Select>
           </div>
 
           {showInstanceList && (
             <div style={{ flex: 1 }}>
-              <Typography.Text strong style={{ display: 'block', marginBottom: '8px' }}>
+              <Typography.Text
+                strong
+                style={{ display: 'block', marginBottom: '8px' }}
+              >
                 Instance Number: {instanceNumber}
               </Typography.Text>
               <Slider
                 min={1}
-                max={displaySets[selectedDisplaySetInstanceUID]?.images.length}
+                max={
+                  sortedDisplaySets[selectedDisplaySetInstanceUID]?.images
+                    .length
+                }
                 value={instanceNumber}
                 onChange={(value) => setInstanceNumber(value)}
                 marks={instanceSliderMarks}
                 tooltip={{
-                  formatter: (value: number | undefined) => value !== undefined ? `Instance ${value}` : ''
+                  formatter: (value: number | undefined) =>
+                    value !== undefined ? `Instance ${value}` : '',
                 }}
               />
             </div>
@@ -398,7 +559,7 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
 
         <Input
           style={{ marginBottom: '20px' }}
-          placeholder='Search DICOM tags...'
+          placeholder="Search DICOM tags..."
           prefix={<SearchOutlined />}
           onChange={(e) => setSearchInput(e.target.value)}
           value={searchInput}
@@ -410,9 +571,9 @@ const DicomTagBrowser = ({ clients, studyInstanceUID }: DicomTagBrowserProps): J
           pagination={false}
           expandable={{
             expandedRowKeys: expandedKeys,
-            onExpandedRowsChange: (keys) => setExpandedKeys(keys as string[])
+            onExpandedRowsChange: (keys) => setExpandedKeys(keys as string[]),
           }}
-          size='small'
+          size="small"
           scroll={{ y: 500 }}
         />
       </div>

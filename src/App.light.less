@@ -20,8 +20,49 @@
   height: 100%;
 }
 
+.slim-multiline-menu-item.ant-menu-item,
+.slim-multiline-menu-item.ant-menu-item .ant-menu-title-content {
+  height: auto;
+  white-space: normal;
+  line-height: 1.2;
+  overflow: visible;
+}
+
+.ant-collapse-header {
+  font-weight: 600;
+  border-top: 1px solid rgba(0, 126, 163, 0.3);
+  border-bottom: 1px solid rgba(0, 126, 163, 0.3);
+}
+
+.ant-collapse-item + .ant-collapse-item .ant-collapse-header {
+  margin-top: -1px;
+}
+
 .ant-menu-submenu-title {
   font-size: 'medium';
+  background-color: #e0f2f7;
+  font-weight: 600;
+  border-top: 1px solid rgba(0, 126, 163, 0.3);
+  border-bottom: 1px solid rgba(0, 126, 163, 0.3);
+}
+
+.ant-menu-submenu + .ant-menu-submenu .ant-menu-submenu-title {
+  margin-top: -1px;
+}
+
+/* First section in sidebar has no top border */
+.ant-layout-sider .ant-menu-inline > .ant-menu-submenu:first-child > .ant-menu-submenu-title {
+  border-top: none;
+}
+
+/* Settings drawer header border - matches section dividers */
+.slim-settings-drawer .ant-drawer-header {
+  border-bottom: 1px solid rgba(0, 126, 163, 0.3);
+}
+
+/* Remove gap between submenu header and list content */
+.ant-layout-sider .ant-list-item {
+  padding: 0;
 }
 
 .ol-overviewmap-box {
