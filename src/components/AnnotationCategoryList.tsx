@@ -1,6 +1,6 @@
+import React from 'react'
 import { Menu } from 'antd'
 import AnnotationCategoryItem from './AnnotationCategoryItem'
-import type { StyleOptions } from './SlideViewer/types'
 
 export interface AnnotationCategoryAndType {
   uid: string
@@ -20,44 +20,50 @@ export interface Category {
   types: Type[]
 }
 
-type CategoryWithTypesRecord = Omit<Category, 'types'> & {
-  types: Record<string, Type>
-}
+const getCategories = (annotations: any): Record<string, Category> => {
+  const categories = annotations?.reduce(
+    (
+      categoriesAcc: Record<string, Category & { types: Record<string, Type> }>,
+      annotation: AnnotationCategoryAndType
+    ) => {
+      const { category, type, uid } = annotation
+      const categoryKey = category.CodeMeaning
+      const typeKey = type.CodeMeaning
 
-const getCategories = (
-  annotations: AnnotationCategoryAndType[] | undefined,
-): Record<string, Category> => {
-  const categories: Record<string, CategoryWithTypesRecord> = {}
-
-  for (const annotation of annotations ?? []) {
-    const { category, type, uid } = annotation
-    const categoryKey = category.CodeMeaning
-    const typeKey = type.CodeMeaning
-
-    if (!(categoryKey in categories)) {
-      categories[categoryKey] = {
+      const oldCategory = categoriesAcc[categoryKey] ?? {
         ...category,
-        types: {},
+        types: {}
       }
-    }
-    const cat = categories[categoryKey]
-    if (!(typeKey in cat.types)) {
-      cat.types[typeKey] = { ...type, uids: [] }
-    }
-    cat.types[typeKey].uids.push(uid)
-  }
+      const oldType = oldCategory.types[typeKey] ?? {
+        ...type,
+        uids: []
+      }
+
+      return {
+        ...categoriesAcc,
+        [categoryKey]: {
+          ...oldCategory,
+          types: {
+            ...oldCategory.types,
+            [typeKey]: { ...oldType, uids: [...oldType.uids, uid] }
+          }
+        }
+      }
+    },
+    {}
+  )
 
   // Normalizing types so that it's an array instead of an object:
-  const result: Record<string, Category> = {}
-  for (const categoryKey of Object.keys(categories)) {
+  Object.keys(categories).forEach((categoryKey: string) => {
     const category = categories[categoryKey]
-    const typesArr = Object.keys(category.types).map(
-      (typeKey: string) => category.types[typeKey],
+    const { types } = category
+    const typesArr = Object.keys(types).map(
+      (typeKey: string) => types[typeKey]
     )
-    result[categoryKey] = { ...category, types: typesArr }
-  }
+    categories[categoryKey].types = typesArr
+  })
 
-  return result
+  return categories
 }
 
 const AnnotationCategoryList = ({
@@ -65,11 +71,11 @@ const AnnotationCategoryList = ({
   onChange,
   onStyleChange,
   defaultAnnotationStyles,
-  checkedAnnotationUids,
+  checkedAnnotationUids
 }: {
   annotations: AnnotationCategoryAndType[]
-  onChange: (arg: { roiUID: string; isVisible: boolean }) => void
-  onStyleChange: (arg: { uid: string; styleOptions: StyleOptions }) => void
+  onChange: Function
+  onStyleChange: Function
   defaultAnnotationStyles: {
     [annotationUID: string]: {
       opacity: number
@@ -78,22 +84,18 @@ const AnnotationCategoryList = ({
     }
   }
   checkedAnnotationUids: Set<string>
-}): JSX.Element | null => {
+}): JSX.Element => {
   const categories: Record<string, Category> = getCategories(annotations)
 
   if (Object.keys(categories).length === 0) {
-    return null
+    return <></>
   }
 
   const items = Object.keys(categories).map((categoryKey: string) => {
     const category = categories[categoryKey]
     return (
       <AnnotationCategoryItem
-        key={
-          category.CodeMeaning !== ''
-            ? category.CodeMeaning
-            : `category-${categoryKey}`
-        }
+        key={category.CodeMeaning !== '' ? category.CodeMeaning : `category-${categoryKey}`}
         category={category}
         onChange={onChange}
         onStyleChange={onStyleChange}

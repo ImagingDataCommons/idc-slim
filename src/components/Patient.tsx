@@ -1,17 +1,12 @@
-// skipcq: JS-C1003
-import type * as dmv from 'dicom-microscopy-viewer'
 import React from 'react'
-import {
-  formatAdmittingDiagnoses,
-  formatPatientSpeciesCodeSequence,
-  parseDate,
-  parseName,
-  parseSex,
-} from '../utils/values'
+// skipcq: JS-C1003
+import * as dmv from 'dicom-microscopy-viewer'
+
 import Description from './Description'
+import { parseName, parseSex, parseDate } from '../utils/values'
 
 interface PatientProps {
-  metadata: dmv.metadata.Study | dmv.metadata.SOPClass
+  metadata: dmv.metadata.Study|dmv.metadata.SOPClass
 }
 
 /**
@@ -19,40 +14,33 @@ interface PatientProps {
  * displays common study-level, patient-related attributes of contained
  * DICOM Slide Microscopy images.
  */
-class Patient extends React.Component<PatientProps, Record<string, never>> {
-  render(): React.ReactNode {
-    const meta = this.props.metadata as unknown as Record<string, unknown>
-    const species = formatPatientSpeciesCodeSequence(
-      meta.PatientSpeciesCodeSequence,
-    )
-    const admittingDiagnosis = formatAdmittingDiagnoses(meta)
+class Patient extends React.Component<PatientProps, {}> {
+  render (): React.ReactNode {
     const attributes = [
       {
         name: 'ID',
-        value: this.props.metadata.PatientID,
+        value: this.props.metadata.PatientID
       },
       {
         name: 'Name',
-        value: parseName(this.props.metadata.PatientName),
+        value: parseName(this.props.metadata.PatientName)
       },
-      ...(species !== undefined ? [{ name: 'Species', value: species }] : []),
       {
         name: 'Sex',
-        value: parseSex(this.props.metadata.PatientSex),
+        value: parseSex(this.props.metadata.PatientSex)
       },
       {
         name: 'Birthdate',
-        value: parseDate(this.props.metadata.PatientBirthDate),
+        value: parseDate(this.props.metadata.PatientBirthDate)
       },
       {
         name: 'Age',
-        value: meta.PatientAge as string | undefined,
-      },
-      ...(admittingDiagnosis !== undefined
-        ? [{ name: 'Admitting diagnosis', value: admittingDiagnosis }]
-        : []),
+        value: (this.props.metadata as any).PatientAge
+      }
     ]
-    return <Description attributes={attributes} />
+    return (
+      <Description attributes={attributes} />
+    )
   }
 }
 

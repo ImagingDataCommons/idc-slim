@@ -1,10 +1,10 @@
-import { Card, Descriptions } from 'antd'
 import React from 'react'
 import { v4 as generateUUID } from 'uuid'
+import { Card, Descriptions } from 'antd'
 
 export interface Attribute {
   name: string
-  value: React.ReactNode
+  value: any
 }
 
 export interface AttributeGroup {
@@ -14,7 +14,7 @@ export interface AttributeGroup {
 
 interface DescriptionProps {
   header?: string
-  icon?: React.ComponentType<Record<string, never>>
+  icon?: any
   attributes: Attribute[]
   selectable?: boolean
   hasLongValues?: boolean
@@ -26,11 +26,8 @@ interface DescriptionProps {
  * React component for a description consisting of a header containing a
  * header and a body containing a list of name-value pairs.
  */
-class Description extends React.Component<
-  DescriptionProps,
-  Record<string, never>
-> {
-  render(): React.ReactNode {
+class Description extends React.Component<DescriptionProps, {}> {
+  render (): React.ReactNode {
     let layout: 'horizontal' | 'vertical' = 'horizontal'
     let labelLineHeight = '14px'
     const contentLineHeight = '14px'
@@ -38,28 +35,26 @@ class Description extends React.Component<
       layout = 'vertical'
       labelLineHeight = '20px'
     }
-    const items = this.props.attributes.map(
-      (item: Attribute, _index: number) => {
-        const uid = generateUUID()
-        return (
-          <Descriptions.Item
-            key={uid}
-            label={item.name}
-            labelStyle={{
-              lineHeight: labelLineHeight,
-            }}
-            contentStyle={{
-              fontWeight: 600,
-              whiteSpace: 'pre-line',
-              lineHeight: contentLineHeight,
-            }}
-            span={1}
-          >
-            {item.value}
-          </Descriptions.Item>
-        )
-      },
-    )
+    const items = this.props.attributes.map((item: Attribute, index: number) => {
+      const uid = generateUUID()
+      return (
+        <Descriptions.Item
+          key={uid}
+          label={item.name}
+          labelStyle={{
+            lineHeight: labelLineHeight
+          }}
+          contentStyle={{
+            fontWeight: 600,
+            whiteSpace: 'pre-line',
+            lineHeight: contentLineHeight
+          }}
+          span={1}
+        >
+          {item.value}
+        </Descriptions.Item>
+      )
+    })
     let icon = null
     if (this.props.icon !== undefined) {
       icon = <this.props.icon />
@@ -68,12 +63,17 @@ class Description extends React.Component<
       <Card
         title={this.props.header}
         extra={icon}
-        size="small"
+        size='small'
         hoverable={this.props.selectable}
         bordered={this.props.header !== undefined}
         actions={this.props.methods}
       >
-        <Descriptions column={1} size="small" layout={layout} bordered={false}>
+        <Descriptions
+          column={1}
+          size='small'
+          layout={layout}
+          bordered={false}
+        >
           {items}
         </Descriptions>
         {this.props.children}

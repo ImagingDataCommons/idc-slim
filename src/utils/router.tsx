@@ -1,13 +1,11 @@
-// React required at runtime for JSX (classic transform)
-// biome-ignore lint/style/useImportType: see above
 import React from 'react'
 import {
-  type Location,
-  type NavigateFunction,
-  type Params,
+  NavigateFunction,
+  Params,
   useLocation,
   useNavigate,
   useParams,
+  Location
 } from 'react-router-dom'
 
 export interface RouteComponentProps {
@@ -16,24 +14,19 @@ export interface RouteComponentProps {
   params: Params<string>
 }
 
-export function withRouter<T extends RouteComponentProps>(
-  Component: React.ComponentType<T>,
-): React.ComponentType<Omit<T, keyof RouteComponentProps>> {
-  function ComponentWithRouterProp(
-    props: Omit<T, keyof RouteComponentProps>,
-  ): JSX.Element {
+export function withRouter<T> (Component: React.ComponentType<T>): Function {
+  function ComponentWithRouterProp (props: any): JSX.Element {
     const location = useLocation()
     const navigate = useNavigate()
     const params = useParams()
-    const routerProps = {
-      ...props,
-      location,
-      navigate,
-      params,
-    } as T
-    return <Component {...routerProps} />
+    return (
+      <Component
+        {...props}
+        location={location}
+        navigate={navigate}
+        params={params}
+      />
+    )
   }
-  return ComponentWithRouterProp as React.ComponentType<
-    Omit<T, keyof RouteComponentProps>
-  >
+  return ComponentWithRouterProp
 }
