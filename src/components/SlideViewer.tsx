@@ -3,12 +3,15 @@ import {
   Checkbox,
   Descriptions,
   Divider,
+  Drawer,
+  InputNumber,
   Layout,
   Menu,
   message,
   Row,
   Select,
   Space,
+  Switch,
   Tooltip,
 } from 'antd'
 import type { CheckboxChangeEvent } from 'antd/es/checkbox'
@@ -31,8 +34,10 @@ import {
   FaSave,
   FaTrash,
 } from 'react-icons/fa'
+import { SettingsRegistration } from '../contexts/SettingsContext'
 import { runValidations } from '../contexts/ValidationContext'
 import { StorageClasses } from '../data/uids'
+import { ActiveSeriesService } from '../services/ActiveSeriesService'
 import DicomMetadataStore from '../services/DICOMMetadataStore'
 import NotificationMiddleware, {
   NotificationMiddlewareContext,
@@ -43,6 +48,10 @@ import type {
   AnnotationSettings,
 } from '../types/annotations'
 import { CustomError, errorTypes } from '../utils/CustomError'
+import {
+  applyDistinctFractionalSegmentPalettes,
+  applyDistinctParametricMapPalettes,
+} from '../utils/distinctOverlayColormaps'
 import generateReport from '../utils/generateReport'
 import { logger } from '../utils/logger'
 import { withRouter } from '../utils/router'
@@ -51,7 +60,6 @@ import { findContentItemsByName } from '../utils/sr'
 import AnnotationGroupList from './AnnotationGroupList'
 import AnnotationList from './AnnotationList'
 import Btn from './Button'
-import ClusteringSettings from './ClusteringSettings'
 import Equipment from './Equipment'
 import HoveredRoiTooltip from './HoveredRoiTooltip'
 import MappingList from './MappingList'
@@ -69,6 +77,7 @@ import {
 } from './SlideViewer/constants'
 import SlideViewerContent from './SlideViewer/SlideViewerContent'
 import SlideViewerModals from './SlideViewer/SlideViewerModals'
+import './SlideViewer/SettingsPanel.css'
 import SlideViewerSidebar from './SlideViewer/SlideViewerSidebar'
 import type {
   Evaluation,
@@ -289,6 +298,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       customizedSegmentColors: {},
       clusteringPixelSizeThreshold: null, // null means auto (zoom-based)
       isClusteringEnabled: true, // Clustering enabled by default
+      isSettingsDrawerOpen: false,
     }
 
     this.handlePointerMoveDebounced = debounce(this.handlePointerMoveEvent, 0, {
@@ -319,6 +329,37 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       data: paletteData,
       firstValueMapped: 0,
     })
+  }
+
+  /**
+   * Publish active series (image + visible derived data) to ActiveSeriesService
+   * for use by the DICOM Tag Browser to show eye icons.
+   */
+  private publishActiveSeriesToService = (): void => {
+    try {
+      const activeImageSeriesUID = this.props.seriesInstanceUID ?? ''
+      const derivedSet = new Set<string>()
+
+      this.volumeViewer.getAllAnnotationGroups().forEach((ag) => {
+        if (this.state.visibleAnnotationGroupUIDs.has(ag.uid)) {
+          derivedSet.add(ag.seriesInstanceUID)
+        }
+      })
+      this.volumeViewer.getAllSegments().forEach((segment) => {
+        if (this.state.visibleSegmentUIDs.has(segment.uid)) {
+          derivedSet.add(segment.seriesInstanceUID)
+        }
+      })
+      this.volumeViewer.getAllParameterMappings().forEach((mapping) => {
+        if (this.state.visibleMappingUIDs.has(mapping.uid)) {
+          derivedSet.add(mapping.seriesInstanceUID)
+        }
+      })
+
+      ActiveSeriesService.setActiveSeries(activeImageSeriesUID, derivedSet)
+    } catch {
+      // volumeViewer may be in a transitional state
+    }
   }
 
   componentDidUpdate(
@@ -391,6 +432,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
       this.populateViewports()
     }
+
+    this.publishActiveSeriesToService()
   }
 
   /**
@@ -716,16 +759,56 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       MicroscopyBulkSimpleAnnotation
     ) {
       const allAnnotationGroups = this.volumeViewer.getAllAnnotationGroups()
-      const annotationGroup = allAnnotationGroups.find((annotationGroup) => {
-        return (
-          annotationGroup.seriesInstanceUID ===
-          (derivedDataset as { SeriesInstanceUID: string }).SeriesInstanceUID
-        )
+      const derivedSeriesInstanceUID = (
+        derivedDataset as { SeriesInstanceUID: string }
+      ).SeriesInstanceUID
+      const matchingAnnotationGroups = allAnnotationGroups.filter(
+        (annotationGroup) => {
+          return annotationGroup.seriesInstanceUID === derivedSeriesInstanceUID
+        },
+      )
+      logger.debug(
+        `auto-load Microscopy Bulk Simple Annotation: found ` +
+          `${matchingAnnotationGroups.length} matching annotation group(s) ` +
+          `out of ${allAnnotationGroups.length} total ` +
+          `for series "${derivedSeriesInstanceUID}"`,
+      )
+      /**
+       * We bypass handleAnnotationGroupVisibilityChange because it re-throws
+       * dmv errors after showing a notification, which aborts the forEach
+       * and leaves only the first annotation group toggled when any
+       * subsequent group throws. We also short-circuit the per-group
+       * runValidations dialog (which is intended for manual user toggles,
+       * not auto-load). We update state once at the end with all
+       * successfully-shown UIDs to avoid any chance of intermediate
+       * setState/re-render interleavings dropping updates.
+       */
+      const shownAnnotationGroupUIDs: string[] = []
+      matchingAnnotationGroups.forEach((annotationGroup) => {
+        try {
+          this.volumeViewer.showAnnotationGroup(annotationGroup.uid)
+          shownAnnotationGroupUIDs.push(annotationGroup.uid)
+        } catch (error) {
+          logger.error(
+            `failed to auto-show annotation group "${annotationGroup.uid}":`,
+            error,
+          )
+        }
       })
-      if (annotationGroup !== undefined) {
-        this.handleAnnotationGroupVisibilityChange({
-          annotationGroupUID: annotationGroup.uid,
-          isVisible: true,
+      logger.debug(
+        `auto-load Microscopy Bulk Simple Annotation: showing ` +
+          `${shownAnnotationGroupUIDs.length}/` +
+          `${matchingAnnotationGroups.length} annotation group(s)`,
+      )
+      if (shownAnnotationGroupUIDs.length > 0) {
+        this.setState((state) => {
+          const visibleAnnotationGroupUIDs = new Set(
+            state.visibleAnnotationGroupUIDs,
+          )
+          shownAnnotationGroupUIDs.forEach((uid) => {
+            visibleAnnotationGroupUIDs.add(uid)
+          })
+          return { visibleAnnotationGroupUIDs }
         })
       }
       logger.debug('Loading Microscopy Bulk Simple Annotation')
@@ -739,12 +822,40 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const matchingSegments = allSegments.filter((segment) => {
         return segment.seriesInstanceUID === derivedSeriesInstanceUID
       })
+      logger.debug(
+        `auto-load Segmentation: found ` +
+          `${matchingSegments.length} matching segment(s) ` +
+          `out of ${allSegments.length} total ` +
+          `for series "${derivedSeriesInstanceUID}"`,
+      )
+      /**
+       * Bypass handleSegmentVisibilityChange so that a throw from dmv's
+       * showSegment on any single segment does not abort the forEach and
+       * leave subsequent segments hidden. We batch the state update at
+       * the end with all successfully-shown UIDs.
+       */
+      const shownSegmentUIDs: string[] = []
       matchingSegments.forEach((segment) => {
-        this.handleSegmentVisibilityChange({
-          segmentUID: segment.uid,
-          isVisible: true,
-        })
+        try {
+          this.volumeViewer.showSegment(segment.uid)
+          shownSegmentUIDs.push(segment.uid)
+        } catch (error) {
+          logger.error(`failed to auto-show segment "${segment.uid}":`, error)
+        }
       })
+      logger.debug(
+        `auto-load Segmentation: showing ` +
+          `${shownSegmentUIDs.length}/${matchingSegments.length} segment(s)`,
+      )
+      if (shownSegmentUIDs.length > 0) {
+        this.setState((state) => {
+          const visibleSegmentUIDs = new Set(state.visibleSegmentUIDs)
+          shownSegmentUIDs.forEach((uid) => {
+            visibleSegmentUIDs.add(uid)
+          })
+          return { visibleSegmentUIDs }
+        })
+      }
       logger.debug('Loading Segmentation')
     } else if (
       (derivedDataset as { SOPClassUID: string }).SOPClassUID === ParametricMap
@@ -758,12 +869,37 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           return parameterMapping.seriesInstanceUID === derivedSeriesInstanceUID
         },
       )
+      logger.debug(
+        `auto-load Parametric Map: found ` +
+          `${matchingMappings.length} matching mapping(s) ` +
+          `out of ${allParameterMappings.length} total ` +
+          `for series "${derivedSeriesInstanceUID}"`,
+      )
+      const shownMappingUIDs: string[] = []
       matchingMappings.forEach((parameterMapping) => {
-        this.handleMappingVisibilityChange({
-          mappingUID: parameterMapping.uid,
-          isVisible: true,
-        })
+        try {
+          this.volumeViewer.showParameterMapping(parameterMapping.uid)
+          shownMappingUIDs.push(parameterMapping.uid)
+        } catch (error) {
+          logger.error(
+            `failed to auto-show parameter mapping "${parameterMapping.uid}":`,
+            error,
+          )
+        }
       })
+      logger.debug(
+        `auto-load Parametric Map: showing ` +
+          `${shownMappingUIDs.length}/${matchingMappings.length} mapping(s)`,
+      )
+      if (shownMappingUIDs.length > 0) {
+        this.setState((state) => {
+          const visibleMappingUIDs = new Set(state.visibleMappingUIDs)
+          shownMappingUIDs.forEach((uid) => {
+            visibleMappingUIDs.add(uid)
+          })
+          return { visibleMappingUIDs }
+        })
+      }
       logger.debug('Loading Parametric Map')
     } else if (
       (derivedDataset as { SOPClassUID: string }).SOPClassUID === OpticalPath
@@ -775,12 +911,40 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const matchingOpticalPaths = allOpticalPaths.filter((opticalPath) => {
         return opticalPath.seriesInstanceUID === derivedSeriesInstanceUID
       })
+      logger.debug(
+        `auto-load Optical Path: found ` +
+          `${matchingOpticalPaths.length} matching optical path(s) ` +
+          `out of ${allOpticalPaths.length} total ` +
+          `for series "${derivedSeriesInstanceUID}"`,
+      )
+      const shownOpticalPathIdentifiers: string[] = []
       matchingOpticalPaths.forEach((opticalPath) => {
-        this.handleOpticalPathVisibilityChange({
-          opticalPathIdentifier: opticalPath.identifier,
-          isVisible: true,
-        })
+        try {
+          this.volumeViewer.showOpticalPath(opticalPath.identifier)
+          shownOpticalPathIdentifiers.push(opticalPath.identifier)
+        } catch (error) {
+          logger.error(
+            `failed to auto-show optical path "${opticalPath.identifier}":`,
+            error,
+          )
+        }
       })
+      logger.debug(
+        `auto-load Optical Path: showing ` +
+          `${shownOpticalPathIdentifiers.length}/` +
+          `${matchingOpticalPaths.length} optical path(s)`,
+      )
+      if (shownOpticalPathIdentifiers.length > 0) {
+        this.setState((state) => {
+          const visibleOpticalPathIdentifiers = new Set(
+            state.visibleOpticalPathIdentifiers,
+          )
+          shownOpticalPathIdentifiers.forEach((identifier) => {
+            visibleOpticalPathIdentifiers.add(identifier)
+          })
+          return { visibleOpticalPathIdentifiers }
+        })
+      }
       logger.debug('Loading Optical Path')
     } else if (
       (derivedDataset as { SOPClassUID: string }).SOPClassUID ===
@@ -992,6 +1156,21 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             resolve()
             return
           }
+          /**
+           * Wait for every per-series retrieval to settle before resolving.
+           * Previously resolve() fired inside the per-series success path,
+           * so the outer Promise settled on whichever ANN series finished
+           * first, racing siblings in the same study and causing
+           * loadDerivedDataset to run before the URL-targeted ANN series
+           * had been added to the viewer.
+           */
+          let pendingSeriesCount = matchedSeries.length
+          const finishOne = (): void => {
+            pendingSeriesCount -= 1
+            if (pendingSeriesCount === 0) {
+              resolve()
+            }
+          }
           matchedSeries.forEach((s) => {
             const { dataset } = dmv.metadata.formatMetadata(s)
             const series = dataset as dmv.metadata.Series
@@ -1007,17 +1186,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                       metadata,
                     })
                   })
-                // annotations = annotations.filter(ann => {
-                //   const refImage = this.props.slide.volumeImages[0]
-                //   return (
-                //     ann.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-                //     ann.ContainerIdentifier === refImage.ContainerIdentifier
-                //   )
-                // })
                 annotations.forEach((ann) => {
                   try {
                     this.volumeViewer.addAnnotationGroups(ann)
-                    resolve()
                   } catch (error: unknown) {
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     NotificationMiddleware.onError(
@@ -1027,7 +1198,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                         'Microscopy Bulk Simple Annotations cannot be displayed.',
                       ),
                     )
-                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     logger.error('failed to add annotation groups:', error)
                   }
                   ann.AnnotationGroupSequence.forEach((item) => {
@@ -1056,6 +1226,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                  * interface unless an update is forced.
                  */
                 this.forceUpdate()
+                finishOne()
               })
               .catch((error) => {
                 console.error(error)
@@ -1068,6 +1239,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                       'instances failed.',
                   ),
                 )
+                finishOne()
               })
           })
         })
@@ -1114,6 +1286,23 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             resolve()
             return
           }
+          /**
+           * Wait for every per-series retrieval to settle before resolving.
+           * Previously resolve() fired inside the per-series success path,
+           * so the outer Promise settled on whichever SEG series finished
+           * first, racing siblings in the same study and causing
+           * loadDerivedDataset to run before the URL-targeted SEG series
+           * had been added to the viewer (observed as
+           * "auto-load Segmentation: found 0 matching segment(s) out of 1
+           * total" when the URL points to a SEG that hadn't loaded yet).
+           */
+          let pendingSeriesCount = matchedSeries.length
+          const finishOne = (): void => {
+            pendingSeriesCount -= 1
+            if (pendingSeriesCount === 0) {
+              resolve()
+            }
+          }
           matchedSeries.forEach((s, _i) => {
             const { dataset } = dmv.metadata.formatMetadata(s)
             const series = dataset as dmv.metadata.Series
@@ -1137,7 +1326,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 if (segmentations.length > 0) {
                   try {
                     this.volumeViewer.addSegments(segmentations)
-                    resolve()
+                    applyDistinctFractionalSegmentPalettes(this.volumeViewer)
                   } catch (error: unknown) {
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     NotificationMiddleware.onError(
@@ -1157,6 +1346,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                    */
                   this.forceUpdate()
                 }
+                finishOne()
               })
               .catch((error) => {
                 console.error(error)
@@ -1168,6 +1358,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                     'Retrieval of metadata of Segmentation instances failed.',
                   ),
                 )
+                finishOne()
               })
           })
         })
@@ -1214,6 +1405,21 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
             resolve()
             return
           }
+          /**
+           * Wait for every per-series retrieval to settle before resolving.
+           * Previously resolve() fired inside the per-series success path,
+           * so the outer Promise settled on whichever PM series finished
+           * first, racing siblings in the same study and causing
+           * loadDerivedDataset to run before the URL-targeted PM series
+           * had been added to the viewer.
+           */
+          let pendingSeriesCount = matchedSeries.length
+          const finishOne = (): void => {
+            pendingSeriesCount -= 1
+            if (pendingSeriesCount === 0) {
+              resolve()
+            }
+          }
           matchedSeries.forEach((s) => {
             const { dataset } = dmv.metadata.formatMetadata(s)
             const series = dataset as dmv.metadata.Series
@@ -1241,7 +1447,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 if (parametricMaps.length > 0) {
                   try {
                     this.volumeViewer.addParameterMappings(parametricMaps)
-                    resolve()
+                    applyDistinctParametricMapPalettes(this.volumeViewer)
                   } catch (error: unknown) {
                     // eslint-disable-next-line @typescript-eslint/no-floating-promises
                     NotificationMiddleware.onError(
@@ -1261,6 +1467,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                    */
                   this.forceUpdate()
                 }
+                finishOne()
               })
               .catch((error) => {
                 console.error(error)
@@ -1272,6 +1479,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                     'Retrieval of metadata of Parametric Map instances failed.',
                   ),
                 )
+                finishOne()
               })
           })
         })
@@ -2128,6 +2336,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   componentWillUnmount = (): void => {
+    ActiveSeriesService.clear()
     this.volumeViewer.cleanup()
     if (this.labelViewer !== null && this.labelViewer !== undefined) {
       this.labelViewer.cleanup()
@@ -2198,6 +2407,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   componentDidMount = (): void => {
     this.componentSetup()
     this.populateViewports()
+    this.publishActiveSeriesToService()
 
     if (!this.props.slide.areVolumeImagesMonochrome) {
       let hasICCProfile = false
@@ -2587,16 +2797,16 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       const style = this.getRoiStyle(key)
       this.volumeViewer.setROIStyle(roi.uid, style)
       this.setState((state) => {
-        const visibleRoiUIDs = state.visibleRoiUIDs
+        const visibleRoiUIDs = new Set(state.visibleRoiUIDs)
         visibleRoiUIDs.add(roi.uid)
         return { visibleRoiUIDs }
       })
     } else {
       logger.log(`hide ROI ${roiUID}`)
       this.setState((state) => {
-        const selectedRoiUIDs = state.selectedRoiUIDs
+        const selectedRoiUIDs = new Set(state.selectedRoiUIDs)
         selectedRoiUIDs.delete(roiUID)
-        const visibleRoiUIDs = state.visibleRoiUIDs
+        const visibleRoiUIDs = new Set(state.visibleRoiUIDs)
         visibleRoiUIDs.delete(roiUID)
         return { visibleRoiUIDs, selectedRoiUIDs }
       })
@@ -2792,17 +3002,24 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       }))
     }
 
-    /** If color is provided, create a palette color lookup table */
-    let paletteColorLookupTable: dmv.color.PaletteColorLookupTable | undefined
+    /**
+     * Only pass a palette when the user changed color. Opacity-only updates
+     * must not send a default RGB for fractional segments or distinct
+     * colormaps are replaced by a flat LUT.
+     */
+    const stylePayload: {
+      opacity?: number
+      paletteColorLookupTable?: dmv.color.PaletteColorLookupTable
+    } = {}
+    if (styleOptions.opacity !== undefined) {
+      stylePayload.opacity = styleOptions.opacity
+    }
     if (styleOptions.color !== undefined) {
-      paletteColorLookupTable =
+      stylePayload.paletteColorLookupTable =
         SlideViewer.createSegmentPaletteColorLookupTable(styleOptions.color)
     }
 
-    this.volumeViewer.setSegmentStyle(segmentUID, {
-      opacity: styleOptions.opacity,
-      paletteColorLookupTable,
-    })
+    this.volumeViewer.setSegmentStyle(segmentUID, stylePayload)
   }
 
   /**
@@ -3356,8 +3573,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * Handler that will toggle the ICC profile color management, i.e., either
    * enable or disable it, depending on its current state.
    */
-  handleICCProfilesToggle = (event: CheckboxChangeEvent): void => {
-    const checked = event.target.checked
+  handleICCProfilesToggle = (checked: boolean): void => {
     this.setState({ isICCProfilesEnabled: checked })
     this.volumeViewer.toggleICCProfiles()
   }
@@ -3366,10 +3582,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * Handler that will toggle the segmentation interpolation, i.e., either
    * enable or disable it, depending on its current state.
    */
-  handleSegmentationInterpolationToggle = (
-    event: CheckboxChangeEvent,
-  ): void => {
-    const checked = event.target.checked
+  handleSegmentationInterpolationToggle = (checked: boolean): void => {
     this.setState({ isSegmentationInterpolationEnabled: checked })
     ;(
       this.volumeViewer as { toggleSegmentationInterpolation(): void }
@@ -3380,10 +3593,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * Handler that will toggle the parametric map interpolation, i.e., either
    * enable or disable it, depending on its current state.
    */
-  handleParametricMapInterpolationToggle = (
-    event: CheckboxChangeEvent,
-  ): void => {
-    const checked = event.target.checked
+  handleParametricMapInterpolationToggle = (checked: boolean): void => {
     this.setState({ isParametricMapInterpolationEnabled: checked })
     ;(
       this.volumeViewer as { toggleParametricMapInterpolation(): void }
@@ -3504,7 +3714,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   private static getOpenSubMenuItems(): string[] {
-    return ['specimens', 'optical-paths', 'annotations', 'presentation-states']
+    return ['specimens', 'equipment', 'optical-paths', 'annotations']
   }
 
   private readonly getReport = (): React.ReactNode => {
@@ -3739,60 +3949,58 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   private readonly getPresentationStateMenu = (): React.ReactNode => {
-    if (this.state.presentationStates.length > 0) {
-      const presentationStateOptions = []
-      this.state.presentationStates.forEach((instance, index) => {
-        presentationStateOptions.push(
-          <Select.Option
-            key={
-              instance.SOPInstanceUID !== undefined &&
-              instance.SOPInstanceUID !== ''
-                ? instance.SOPInstanceUID
-                : `presentation-state-${index}`
-            }
-            value={instance.SOPInstanceUID}
-            dropdownMatchSelectWidth={false}
-            size="small"
-          >
-            {instance.ContentDescription !== undefined &&
-            instance.ContentDescription !== ''
-              ? instance.ContentDescription
-              : 'Untitled'}
-          </Select.Option>,
-        )
-      })
+    if (this.state.presentationStates.length === 0) return undefined
+    const presentationStateOptions = []
+    this.state.presentationStates.forEach((instance, index) => {
       presentationStateOptions.push(
         <Select.Option
-          key="default-presentation-state"
-          value={undefined}
+          key={
+            instance.SOPInstanceUID !== undefined &&
+            instance.SOPInstanceUID !== ''
+              ? instance.SOPInstanceUID
+              : `presentation-state-${index}`
+          }
+          value={instance.SOPInstanceUID}
           dropdownMatchSelectWidth={false}
           size="small"
         >
-          {null}
+          {instance.ContentDescription !== undefined &&
+          instance.ContentDescription !== ''
+            ? instance.ContentDescription
+            : 'Untitled'}
         </Select.Option>,
       )
-      return (
-        <Menu.SubMenu key="presentation-states" title="Presentation States">
-          <Space align="center" size={20} style={{ padding: '14px' }}>
-            <Select
-              style={{ minWidth: 200, maxWidth: 200 }}
-              onSelect={this.handlePresentationStateSelection}
-              key="presentation-states"
-              value={this.state.selectedPresentationStateUID}
-            >
-              {presentationStateOptions}
-            </Select>
-            <Tooltip title="Reset">
-              <Btn
-                icon={UndoOutlined}
-                onClick={this.handlePresentationStateReset}
-              />
-            </Tooltip>
-          </Space>
-        </Menu.SubMenu>
-      )
-    }
-    return undefined
+    })
+    presentationStateOptions.push(
+      <Select.Option
+        key="default-presentation-state"
+        value={undefined}
+        dropdownMatchSelectWidth={false}
+        size="small"
+      >
+        {null}
+      </Select.Option>,
+    )
+    return (
+      <Menu.SubMenu key="presentation-states" title="Presentation States">
+        <Space align="center" size={20} style={{ padding: '14px' }}>
+          <Select
+            style={{ minWidth: 200, maxWidth: 200 }}
+            onSelect={this.handlePresentationStateSelection}
+            key="presentation-states"
+            value={this.state.selectedPresentationStateUID}
+          >
+            {presentationStateOptions}
+          </Select>
+          <Tooltip title="Reset">
+            <Btn
+              icon={UndoOutlined}
+              onClick={this.handlePresentationStateReset}
+            />
+          </Tooltip>
+        </Space>
+      </Menu.SubMenu>
+    )
   }
 
   private readonly getSegmentationMenu = (
@@ -4082,16 +4290,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               }
             />
           )}
-
-          {/* Clustering Settings */}
-          <ClusteringSettings
-            isClusteringEnabled={this.state.isClusteringEnabled}
-            clusteringPixelSizeThreshold={
-              this.state.clusteringPixelSizeThreshold
-            }
-            onClusteringToggle={this.handleClusteringToggle}
-            onThresholdChange={this.handleClusteringPixelSizeThresholdChange}
-          />
         </Menu.SubMenu>
       )
     }
@@ -4344,17 +4542,26 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   private readonly getICCProfilesMenu = (): React.ReactNode => {
+    const hasICCProfiles =
+      this.volumeViewer !== null &&
+      this.volumeViewer !== undefined &&
+      this.volumeViewer.getICCProfiles().length > 0
     return (
-      this.volumeViewer.getICCProfiles().length > 0 && (
-        <div style={{ margin: '0.9rem' }}>
-          <Checkbox
-            checked={this.state.isICCProfilesEnabled}
-            onChange={this.handleICCProfilesToggle}
-          >
-            ICC Profiles
-          </Checkbox>
-        </div>
-      )
+      <div
+        className={hasICCProfiles ? undefined : 'slim-settings-disabled'}
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span>ICC Profiles</span>
+        <Switch
+          checked={this.state.isICCProfilesEnabled}
+          onChange={this.handleICCProfilesToggle}
+          disabled={!hasICCProfiles}
+        />
+      </div>
     )
   }
 
@@ -4362,31 +4569,150 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const segments = this.volumeViewer.getAllSegments()
     return (
       segments.length > 0 && (
-        <div style={{ margin: '0.9rem' }}>
-          <Checkbox
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}
+        >
+          <span>Interpolation</span>
+          <Switch
             checked={this.state.isSegmentationInterpolationEnabled}
             onChange={this.handleSegmentationInterpolationToggle}
-          >
-            Segmentation Interpolation
-          </Checkbox>
+          />
         </div>
       )
     )
   }
 
-  private readonly getParametricMapInterpolationMenu = (): React.ReactNode => {
-    const mappings = this.volumeViewer.getAllParameterMappings()
-    return (
-      mappings.length > 0 && (
-        <div style={{ margin: '0.9rem' }}>
-          <Checkbox
-            checked={this.state.isParametricMapInterpolationEnabled}
-            onChange={this.handleParametricMapInterpolationToggle}
-          >
-            Parametric Map Interpolation
-          </Checkbox>
+  private readonly getSettingsPanelContent = (menus: {
+    iccProfilesMenu: React.ReactNode
+    segmentationInterpolationMenu: React.ReactNode
+  }): React.ReactNode => {
+    const menuItems: React.ReactNode[] = []
+
+    menuItems.push(
+      <Menu.SubMenu key="display" title="Display">
+        <Menu.Item key="display-content" disabled style={{ cursor: 'default' }}>
+          <div className="slim-settings-content">{menus.iccProfilesMenu}</div>
+        </Menu.Item>
+      </Menu.SubMenu>,
+    )
+
+    const segmentationItems: React.ReactNode[] = []
+    segmentationItems.push(
+      <div
+        key="clustering-enabled"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
+        }}
+      >
+        <span>Clustering</span>
+        <Switch
+          checked={Boolean(this.state.isClusteringEnabled)}
+          onChange={this.handleClusteringToggle}
+        />
+      </div>,
+    )
+    segmentationItems.push(
+      <div key="clustering-threshold" style={{ marginBottom: '0.5rem' }}>
+        <div style={{ marginBottom: '0.5rem' }}>
+          Clustering Pixel Size Threshold (mm)
+        </div>
+        <InputNumber
+          min={0}
+          max={100}
+          step={0.001}
+          precision={3}
+          style={{ width: '100%' }}
+          value={this.state.clusteringPixelSizeThreshold ?? undefined}
+          onChange={this.handleClusteringPixelSizeThresholdChange}
+          placeholder="Auto (zoom-based)"
+          addonAfter="mm"
+        />
+        <div
+          style={{
+            fontSize: '0.75rem',
+            color: '#8c8c8c',
+            marginTop: '0.5rem',
+          }}
+        >
+          When pixel size ≤ threshold, clustering is disabled. Leave empty for
+          zoom-based detection.
+        </div>
+      </div>,
+    )
+    if (
+      menus.segmentationInterpolationMenu !== null &&
+      menus.segmentationInterpolationMenu !== undefined
+    ) {
+      segmentationItems.push(menus.segmentationInterpolationMenu)
+    }
+    menuItems.push(
+      <Menu.SubMenu key="segmentation" title="Segmentation">
+        <Menu.Item
+          key="segmentation-content"
+          disabled
+          style={{ cursor: 'default' }}
+        >
+          <div className="slim-settings-content">{segmentationItems}</div>
+        </Menu.Item>
+      </Menu.SubMenu>,
+    )
+
+    const parametricMapItems: React.ReactNode[] = []
+    parametricMapItems.push(
+      <div
+        key="parametric-map-interpolation"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
+        }}
+      >
+        <span>Interpolation</span>
+        <Switch
+          checked={this.state.isParametricMapInterpolationEnabled}
+          onChange={this.handleParametricMapInterpolationToggle}
+        />
+      </div>,
+    )
+    menuItems.push(
+      <Menu.SubMenu key="parametric-map" title="Parametric Map">
+        <Menu.Item
+          key="parametric-map-content"
+          disabled
+          style={{ cursor: 'default' }}
+        >
+          <div className="slim-settings-content">{parametricMapItems}</div>
+        </Menu.Item>
+      </Menu.SubMenu>,
+    )
+
+    if (menuItems.length === 0) {
+      return (
+        <div style={{ padding: 16, color: 'rgba(0,0,0,0.45)' }}>
+          No settings available for this slide.
         </div>
       )
+    }
+
+    return (
+      <Menu
+        mode="inline"
+        className="slim-settings-menu"
+        defaultOpenKeys={['display', 'segmentation', 'parametric-map']}
+        style={{ border: 'none', width: '100%' }}
+        inlineIndent={14}
+        selectable={false}
+      >
+        {menuItems}
+      </Menu>
     )
   }
 
@@ -4401,7 +4727,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const specimenMenu = this.getSpecimenMenu()
     const equipmentMenu = this.getEquipmentMenu()
     const opticalPathMenu = this.getOpticalPathMenu()
-    const presentationStateMenu = this.getPresentationStateMenu()
     const segmentationMenu = this.getSegmentationMenu(segments)
     const parametricMapMenu = this.getParametricMapMenu(mappings)
     const annotationGroupMenu = this.getAnnotationGroupMenu(annotationGroups)
@@ -4411,9 +4736,17 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const iccProfilesMenu = this.getICCProfilesMenu()
     const segmentationInterpolationMenu =
       this.getSegmentationInterpolationMenu()
-    const parametricMapInterpolationMenu =
-      this.getParametricMapInterpolationMenu()
 
+    const presentationStateMenu = this.getPresentationStateMenu()
+
+    const settingsPanelContent = this.getSettingsPanelContent({
+      iccProfilesMenu,
+      segmentationInterpolationMenu,
+    })
+
+    if (presentationStateMenu !== null && presentationStateMenu !== undefined) {
+      openSubMenuItems.push('presentation-states')
+    }
     if (segmentationMenu !== null && segmentationMenu !== undefined) {
       openSubMenuItems.push('segmentations')
     }
@@ -4428,6 +4761,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
     return (
       <Layout style={{ height: '100%' }} hasSider>
+        <SettingsRegistration
+          onOpenSettings={() => this.setState({ isSettingsDrawerOpen: true })}
+        />
         <SlideViewerContent
           toolbar={toolbar}
           toolbarHeight={toolbarHeight}
@@ -4479,9 +4815,6 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           labelViewer={this.labelViewer}
           openSubMenuItems={openSubMenuItems}
           specimenMenu={specimenMenu}
-          iccProfilesMenu={iccProfilesMenu}
-          segmentationInterpolationMenu={segmentationInterpolationMenu}
-          parametricMapInterpolationMenu={parametricMapInterpolationMenu}
           equipmentMenu={equipmentMenu}
           opticalPathMenu={opticalPathMenu}
           presentationStateMenu={presentationStateMenu}
@@ -4495,6 +4828,18 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           onRoiStyleChange={this.handleRoiStyleChange}
           defaultAnnotationStyles={this.defaultAnnotationStyles}
         />
+
+        <Drawer
+          title="Settings"
+          placement="right"
+          onClose={() => this.setState({ isSettingsDrawerOpen: false })}
+          open={this.state.isSettingsDrawerOpen}
+          width={320}
+          className="slim-settings-drawer"
+          bodyStyle={{ padding: 0, minHeight: '100%', overflow: 'auto' }}
+        >
+          {settingsPanelContent}
+        </Drawer>
 
         {this.state.isHoveredRoiTooltipVisible &&
         this.state.hoveredRoiAttributes.length > 0 ? (
