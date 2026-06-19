@@ -40,9 +40,8 @@ apt-get clean
 curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
-# Install Bun system-wide (to /usr/local so it's in PATH)
-export BUN_INSTALL=/usr/local
-curl -fsSL https://bun.sh/install | bash
+corepack enable
+corepack prepare pnpm@10.34.1 --activate
 
 apt-get clean
 

@@ -30,7 +30,6 @@ public/config/*
 .env.production.local
 
 npm-debug.log*
-bun-debug.log*
-bun-error.log*
+pnpm-debug.log*
 
 /.github
