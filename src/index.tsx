@@ -7,6 +7,7 @@ import './index.css'
 import packageInfo from '../package.json'
 import type AppConfig from './AppConfig'
 import CustomErrorBoundary from './components/CustomErrorBoundary'
+import { logger } from './utils/logger'
 
 declare global {
   interface Window {
@@ -17,6 +18,20 @@ declare global {
 const config: AppConfig = window.config
 if (config === undefined) {
   throw Error('No application configuration was provided.')
+}
+
+if (config.logger != null) {
+  logger.configure({
+    ...(config.logger.level != null
+      ? { level: logger.parseLogLevel(config.logger.level) }
+      : {}),
+    ...(config.logger.enableInProduction != null
+      ? { enableInProduction: config.logger.enableInProduction }
+      : {}),
+    ...(config.logger.enableInDevelopment != null
+      ? { enableInDevelopment: config.logger.enableInDevelopment }
+      : {}),
+  })
 }
 
 type AppProps = {
@@ -107,22 +122,43 @@ message.config({
   duration: config.messages?.duration ?? 5,
 })
 
-const container = document.getElementById('root')
-if (container == null) {
-  throw new Error('Root element not found')
+const mountApp = (): void => {
+  const container = document.getElementById('root')
+  if (container == null) {
+    throw new Error('Root element not found')
+  }
+  const root = createRoot(container)
+  root.render(
+    /// / <React.StrictMode>
+    <React.Suspense fallback={<div>Loading application...</div>}>
+      <CustomErrorBoundary context="App">
+        <App
+          config={config}
+          version={packageInfo.version}
+          name={packageInfo.name}
+          homepage="https://github.com/ImagingDataCommons/slim"
+        />
+      </CustomErrorBoundary>
+    </React.Suspense>,
+    // </React.StrictMode>
+  )
 }
-const root = createRoot(container)
-root.render(
-  /// / <React.StrictMode>
-  <React.Suspense fallback={<div>Loading application...</div>}>
-    <CustomErrorBoundary context="App">
-      <App
-        config={config}
-        version={packageInfo.version}
-        name={packageInfo.name}
-        homepage="https://github.com/ImagingDataCommons/slim"
-      />
-    </CustomErrorBoundary>
-  </React.Suspense>,
-  // </React.StrictMode>
-)
+
+/*
+ * Silent renew reuses the app redirect_uri (no extra IdP registration).
+ * When oidc-client loads that URI in a hidden iframe (success or error),
+ * complete the callback here and skip mounting React so the iframe cannot
+ * share/corrupt the parent sessionStorage OIDC state.
+ */
+// skipcq: JS-0098 - fire-and-forget async auth bootstrap with internal error handling
+void import('./auth/OidcManager')
+  .then(async ({ completeSilentRenewIfFrame }) => {
+    const handled = await completeSilentRenewIfFrame()
+    if (!handled) {
+      mountApp()
+    }
+  })
+  .catch((error) => {
+    console.error('failed to initialize auth bootstrap', error)
+    mountApp()
+  })
