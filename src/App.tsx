@@ -606,6 +606,7 @@ class App extends React.Component<AppProps, AppState> {
                 showServerSelectionButton={false}
                 clients={this.state.clients}
                 defaultClients={this.state.defaultClients}
+                appConfig={this.props.config}
               />
               <Layout.Content
                 style={{
@@ -642,6 +643,7 @@ class App extends React.Component<AppProps, AppState> {
                       showServerSelectionButton={enableServerSelection}
                       clients={this.state.clients}
                       defaultClients={this.state.defaultClients}
+                      appConfig={this.props.config}
                     />
                     <Layout.Content style={layoutContentStyle}>
                       {worklist}
@@ -665,6 +667,7 @@ class App extends React.Component<AppProps, AppState> {
                         showServerSelectionButton={enableServerSelection}
                         clients={this.state.clients}
                         defaultClients={this.state.defaultClients}
+                        appConfig={this.props.config}
                       />
                       <Layout.Content style={layoutContentStyle}>
                         <ParametrizedCaseViewer
@@ -694,6 +697,7 @@ class App extends React.Component<AppProps, AppState> {
                         showServerSelectionButton={enableServerSelection}
                         clients={this.state.clients}
                         defaultClients={this.state.defaultClients}
+                        appConfig={this.props.config}
                       />
                       <Layout.Content style={layoutContentStyle}>
                         <ParametrizedCaseViewer
@@ -722,6 +726,7 @@ class App extends React.Component<AppProps, AppState> {
                       showServerSelectionButton={enableServerSelection}
                       clients={this.state.clients}
                       defaultClients={this.state.defaultClients}
+                      appConfig={this.props.config}
                     />
                     <Layout.Content style={layoutContentStyle}>
                       Logged out
