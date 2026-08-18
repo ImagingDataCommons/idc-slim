@@ -14,18 +14,18 @@ RUN apt-get update && \
     unzip && \
     apt-get clean
 
-RUN curl -fsSL https://deb.nodesource.com/setup_21.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
     nodejs && \
     apt-get clean
 
-RUN corepack enable && corepack prepare pnpm@10.34.1 --activate
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 
 WORKDIR /usr/local/share/mghcomputationalpathology/slim
 
 # Install dependencies first and then include code for efficient caching
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
 RUN pnpm install --frozen-lockfile
 
@@ -42,7 +42,11 @@ RUN chmod +x scripts/*.sh
 FROM lib AS app
 
 ARG REACT_APP_CONFIG=local
-ENV PUBLIC_URL=/
+# Public default for docker-compose DICOMweb; override at build time if needed.
+ARG SLIM_LOCAL_DICOMWEB_URL=http://localhost:8008/dcm4chee-arc/aets/DCM4CHEE/rs
+ENV PUBLIC_URL=/ \
+    REACT_APP_CONFIG=${REACT_APP_CONFIG} \
+    SLIM_LOCAL_DICOMWEB_URL=${SLIM_LOCAL_DICOMWEB_URL}
 
 RUN addgroup --system --gid 101 nginx && \
     adduser --system \

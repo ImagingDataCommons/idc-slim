@@ -1,3 +1,94 @@
+## [0.46.10](https://github.com/ImagingDataCommons/slim/compare/v0.46.9...v0.46.10) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** build DMV when using git dependency from package.json ([#422](https://github.com/ImagingDataCommons/slim/issues/422)) ([3589c1a](https://github.com/ImagingDataCommons/slim/commit/3589c1adf77e39daf984426e33431d3bc9cc07b7))
+
+## [0.46.9](https://github.com/ImagingDataCommons/slim/compare/v0.46.8...v0.46.9) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** require open PR for matching DMV branch detection ([#421](https://github.com/ImagingDataCommons/slim/issues/421)) ([09b41e8](https://github.com/ImagingDataCommons/slim/commit/09b41e87dca7bc4530f9a339f0a8d5b748a57bac))
+
+## [0.46.8](https://github.com/ImagingDataCommons/slim/compare/v0.46.7...v0.46.8) (2026-08-14)
+
+
+### Bug Fixes
+
+* **ci:** escape hyphens in pnpm pkg set property path ([#420](https://github.com/ImagingDataCommons/slim/issues/420)) ([1f25a1b](https://github.com/ImagingDataCommons/slim/commit/1f25a1b4fd89b8c29ae815c434b634f6618e2649))
+
+## [0.46.7](https://github.com/ImagingDataCommons/slim/compare/v0.46.6...v0.46.7) (2026-08-13)
+
+
+### Bug Fixes
+
+* make worklist table body scrollable while keeping header/footer fixed ([#417](https://github.com/ImagingDataCommons/slim/issues/417)) ([1d8e85e](https://github.com/ImagingDataCommons/slim/commit/1d8e85e780fb1699ba161959a3ad27977f7e54f1))
+
+## [0.46.6](https://github.com/ImagingDataCommons/slim/compare/v0.46.5...v0.46.6) (2026-08-13)
+
+
+### Bug Fixes
+
+* remove oidc from preview config ([#415](https://github.com/ImagingDataCommons/slim/issues/415)) ([deeb351](https://github.com/ImagingDataCommons/slim/commit/deeb351e41f159667ccb45cc37caac111f1d9feb))
+
+## [0.46.5](https://github.com/ImagingDataCommons/slim/compare/v0.46.4...v0.46.5) (2026-08-13)
+
+
+### Bug Fixes
+
+* enable scrolling on worklist content area ([#414](https://github.com/ImagingDataCommons/slim/issues/414)) ([2f7ea79](https://github.com/ImagingDataCommons/slim/commit/2f7ea7968cfa09e36795cc8d4fdb9572af1892e1))
+
+## [0.46.4](https://github.com/ImagingDataCommons/slim/compare/v0.46.3...v0.46.4) (2026-08-11)
+
+
+### Bug Fixes
+
+* improve probabilistic SEG legend usability ([#409](https://github.com/ImagingDataCommons/slim/issues/409)) ([#410](https://github.com/ImagingDataCommons/slim/issues/410)) ([f8f3e32](https://github.com/ImagingDataCommons/slim/commit/f8f3e32daf542c805a3f98e20dda19796a81adfa))
+
+## [0.46.3](https://github.com/ImagingDataCommons/slim/compare/v0.46.2...v0.46.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* improve slide-list overview preview sizing ([#399](https://github.com/ImagingDataCommons/slim/issues/399)) ([#400](https://github.com/ImagingDataCommons/slim/issues/400)) ([15ed58b](https://github.com/ImagingDataCommons/slim/commit/15ed58b6c4b61f60eceb8880fbbb12476a9d12a2))
+
+## [0.46.2](https://github.com/ImagingDataCommons/slim/compare/v0.46.1...v0.46.2) (2026-08-07)
+
+
+### Bug Fixes
+
+* make XHR retry hook actually retry and keep ICC switch state in sync ([#402](https://github.com/ImagingDataCommons/slim/issues/402)) ([0f4c725](https://github.com/ImagingDataCommons/slim/commit/0f4c7259a6a3814df00a8ee1900b8562c1543e61))
+
+## [0.46.1](https://github.com/ImagingDataCommons/slim/compare/v0.46.0...v0.46.1) (2026-08-05)
+
+
+### Bug Fixes
+
+* re-enable THUMBNAIL images in the volume pyramid ([#318](https://github.com/ImagingDataCommons/slim/issues/318)) ([d526417](https://github.com/ImagingDataCommons/slim/commit/d5264178f48f53f5289714dffe419b96599a2e33))
+
+# [0.46.0](https://github.com/ImagingDataCommons/slim/compare/v0.45.7...v0.46.0) (2026-08-05)
+
+
+### Features
+
+* Add gamma correction toggle ([#385](https://github.com/ImagingDataCommons/slim/issues/385)) ([bb99e98](https://github.com/ImagingDataCommons/slim/commit/bb99e98d94338b3314187405bd0f84792955ef92))
+
+## [0.45.7](https://github.com/ImagingDataCommons/slim/compare/v0.45.6...v0.45.7) (2026-07-09)
+
+
+### Bug Fixes
+
+* declare uuid and fraction.js dependencies ([#396](https://github.com/ImagingDataCommons/slim/issues/396)) ([ea513cd](https://github.com/ImagingDataCommons/slim/commit/ea513cd84ea5364e45a347eac8cec14bdff30324))
+
+## [0.45.6](https://github.com/ImagingDataCommons/slim/compare/v0.45.5...v0.45.6) (2026-06-29)
+
+
+### Bug Fixes
+
+* patch form-data CRLF injection (CVE-2026-12143) ([#393](https://github.com/ImagingDataCommons/slim/issues/393)) ([efebe02](https://github.com/ImagingDataCommons/slim/commit/efebe0279f6ef4c56b65ec607bb44ec413d2f3bc)), closes [#175](https://github.com/ImagingDataCommons/slim/issues/175) [#176](https://github.com/ImagingDataCommons/slim/issues/176)
+
 ## [0.45.5](https://github.com/ImagingDataCommons/slim/compare/v0.45.4...v0.45.5) (2026-06-19)
 
 
