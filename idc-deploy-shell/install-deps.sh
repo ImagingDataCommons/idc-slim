@@ -37,7 +37,7 @@ apt-get install -y --no-install-suggests --no-install-recommends apt-transport-h
 
 apt-get clean
 
-curl -sL https://deb.nodesource.com/setup_20.x | bash -
+curl -sL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs
 
 corepack enable
