@@ -10,40 +10,43 @@ RUN apt-get update && \
     curl \
     dumb-init \
     gnupg \
-    nginx && \
+    nginx \
+    unzip && \
     apt-get clean
 
-RUN curl -fsSL https://deb.nodesource.com/setup_21.x | bash - && \
-    curl -sS https://dl.yarnpkg.com/debian/pubkey.gpg | apt-key add - && \
-    echo "deb https://dl.yarnpkg.com/debian/ stable main" | tee /etc/apt/sources.list.d/yarn.list && \
-    curl -sS https://deb.nodesource.com/setup_21.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
-    nodejs \
-    yarn && \
+    nodejs && \
     apt-get clean
+
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 
 WORKDIR /usr/local/share/mghcomputationalpathology/slim
 
 # Install dependencies first and then include code for efficient caching
-COPY package.json .
-COPY yarn.lock .
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
-# There are sometimes weird network errors. Increasing the network timeout
-#  seems to help (see https://github.com/yarnpkg/yarn/issues/5259)
-RUN yarn install --frozen-lockfile --network-timeout 100000
+RUN pnpm install --frozen-lockfile
 
 COPY craco.config.js .
 COPY tsconfig.json .
 COPY types ./types
 COPY public ./public
+COPY scripts ./scripts
 COPY src ./src
+
+RUN chmod +x scripts/*.sh
 
 
 FROM lib AS app
 
 ARG REACT_APP_CONFIG=local
-ENV PUBLIC_URL=/
+# Public default for docker-compose DICOMweb; override at build time if needed.
+ARG SLIM_LOCAL_DICOMWEB_URL=http://localhost:8008/dcm4chee-arc/aets/DCM4CHEE/rs
+ENV PUBLIC_URL=/ \
+    REACT_APP_CONFIG=${REACT_APP_CONFIG} \
+    SLIM_LOCAL_DICOMWEB_URL=${SLIM_LOCAL_DICOMWEB_URL}
 
 RUN addgroup --system --gid 101 nginx && \
     adduser --system \
@@ -54,7 +57,7 @@ RUN addgroup --system --gid 101 nginx && \
             --shell /bin/false \
             nginx
 
-RUN NODE_OPTIONS=--max_old_space_size=8192 yarn run build && \
+RUN NODE_OPTIONS=--max_old_space_size=8192 pnpm run build && \
         mkdir -p /var/www/html && \
         cp -R build/* /var/www/html/
 
@@ -79,4 +82,4 @@ RUN useradd -m -s /bin/bash tester && \
 
 USER tester
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--", "yarn", "test"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "pnpm", "run", "test"]

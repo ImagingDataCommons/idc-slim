@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Fast checks on every commit: lint + format (biome check runs both)
+pnpm run lint
