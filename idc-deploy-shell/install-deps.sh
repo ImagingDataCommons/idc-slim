@@ -41,7 +41,7 @@ curl -sL https://deb.nodesource.com/setup_20.x | bash -
 apt-get install -y nodejs
 
 corepack enable
-corepack prepare pnpm@10.34.1 --activate
+corepack prepare pnpm@11.9.0 --activate
 
 apt-get clean
 
