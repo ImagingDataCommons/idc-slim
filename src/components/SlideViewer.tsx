@@ -34,6 +34,7 @@ import {
   FaSave,
   FaTrash,
 } from 'react-icons/fa'
+import { DownloadRegistration } from '../contexts/DownloadContext'
 import { SettingsRegistration } from '../contexts/SettingsContext'
 import { runValidations } from '../contexts/ValidationContext'
 import { StorageClasses } from '../data/uids'
@@ -4928,6 +4929,13 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       <Layout style={{ height: '100%', minHeight: 0 }} hasSider>
         <SettingsRegistration
           onOpenSettings={() => this.setState({ isSettingsDrawerOpen: true })}
+        />
+        {/* Publishes the slide's series so the Header's download button can
+            offer them. A slide spans its VOLUME, LABEL and OVERVIEW series,
+            which cannot be derived from the route. */}
+        <DownloadRegistration
+          seriesInstanceUIDs={this.props.slide.seriesInstanceUIDs}
+          label={this.props.slide.description}
         />
         <SlideViewerContent
           toolbar={toolbar}

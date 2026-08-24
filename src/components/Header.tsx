@@ -2,7 +2,6 @@ import {
   ApiOutlined,
   BugOutlined,
   CheckOutlined,
-  CloudDownloadOutlined,
   FileSearchOutlined,
   InfoOutlined,
   StopOutlined,
@@ -45,7 +44,7 @@ import {
 import { normalizeServerUrl } from '../utils/url'
 import Button from './Button'
 import DicomTagBrowser from './DicomTagBrowser/DicomTagBrowser'
-import DownloadStudySeriesDialog from './DownloadStudySeriesDialog'
+import DownloadButton from './DownloadButton'
 
 const aboutModalCopyTooltips: [React.ReactNode, React.ReactNode] = [
   'Copy hash',
@@ -623,15 +622,6 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     this.setState({ isServerSelectionModalVisible: true })
   }
 
-  handleDownloadButtonClick = (appConfig: AppConfig): void => {
-    Modal.info({
-      title: 'Download Study or Series',
-      width: 1000,
-      content: <DownloadStudySeriesDialog appConfig={appConfig} />,
-      onOk(): void {},
-    })
-  }
-
   handleServerSelectionInput = (
     event: React.FormEvent<HTMLInputElement>,
   ): void => {
@@ -762,6 +752,17 @@ class Header extends React.Component<HeaderProps, HeaderState> {
 
     const showDicomTagBrowser = isViewerPath(this.props.location.pathname)
 
+    // Gated the same way as the tag browser. Without this the button also
+    // renders on the worklist, where there is no study and the dialog offered
+    // `idc download undefined`.
+    const downloadButton = showDicomTagBrowser ? (
+      <DownloadButton
+        appConfig={this.props.appConfig}
+        studyInstanceUID={this.props.params.studyInstanceUID ?? ''}
+        seriesInstanceUID={parseSeriesInstanceUID(this.props.location.pathname)}
+      />
+    ) : null
+
     const dicomTagBrowserButton = showDicomTagBrowser ? (
       <Button
         icon={FileSearchOutlined}
@@ -845,13 +846,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
             <Col style={{ flexShrink: 0 }}>
               <Space direction="horizontal">
                 {worklistButton}
-                <Button
-                  icon={CloudDownloadOutlined}
-                  tooltip="Download Study/Series"
-                  onClick={() =>
-                    this.handleDownloadButtonClick(this.props.appConfig)
-                  }
-                />
+                {downloadButton}
                 {infoButton}
                 {dicomTagBrowserButton}
                 {serverSelectionButton}
