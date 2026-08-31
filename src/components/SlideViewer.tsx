@@ -49,6 +49,10 @@ import type {
 } from '../types/annotations'
 import { CustomError, errorTypes } from '../utils/CustomError'
 import {
+  clampOverviewMapInViewport,
+  observeOverviewMapClamp,
+} from '../utils/clampOverviewMapInViewport'
+import {
   applyDistinctFractionalSegmentPalettes,
   applyDistinctParametricMapPalettes,
 } from '../utils/distinctOverlayColormaps'
@@ -120,6 +124,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   private readonly labelViewportRef: React.RefObject<HTMLDivElement>
 
+  private stopOverviewMapClamp: (() => void) | undefined
+
   private volumeViewer: dmv.viewer.VolumeImageViewer
 
   private labelViewer?: dmv.viewer.LabelImageViewer
@@ -162,9 +168,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     },
   }
 
-  private roiStyles: { [key: string]: dmv.viewer.ROIStyleOptions } = {}
+  private readonly roiStyles: { [key: string]: dmv.viewer.ROIStyleOptions } = {}
 
-  private defaultAnnotationStyles: {
+  private readonly defaultAnnotationStyles: {
     [annotationUID: string]: StyleOptions
   } = {}
 
@@ -293,6 +299,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       selectedPresentationStateUID: this.props.selectedPresentationStateUID,
       loadingFrames: new Set(),
       isICCProfilesEnabled: true,
+      isPaletteDisplayGammaCorrectionEnabled:
+        volumeViewer.getPaletteDisplayGammaCorrectionEnabled(),
       isSegmentationInterpolationEnabled: false,
       isParametricMapInterpolationEnabled: true,
       customizedSegmentColors: {},
@@ -317,6 +325,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    */
   private static readonly createSegmentPaletteColorLookupTable = (
     segmentColor: number[],
+    applyDisplayGammaCorrection = true,
   ): dmv.color.PaletteColorLookupTable => {
     /** Create a simple palette with the segment color
      * For binary segments, we typically have 2 values: background (0) and segment (1) */
@@ -328,6 +337,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     return dmv.color.buildPaletteColorLookupTable({
       data: paletteData,
       firstValueMapped: 0,
+      applyDisplayGammaCorrection,
     })
   }
 
@@ -402,6 +412,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       })
       this.volumeViewer = volumeViewer
       this.labelViewer = labelViewer
+      this.volumeViewer.setPaletteDisplayGammaCorrectionEnabled(
+        this.state.isPaletteDisplayGammaCorrectionEnabled,
+      )
 
       const activeOpticalPathIdentifiers: Set<string> = new Set()
       const visibleOpticalPathIdentifiers: Set<string> = new Set()
@@ -429,11 +442,35 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
         selectedSeriesInstanceUID: undefined,
         validXCoordinateRange: [offset[0], offset[0] + size[0]],
         validYCoordinateRange: [offset[1], offset[1] + size[1]],
+        /**
+         * A freshly constructed viewer always starts with ICC profiles
+         * enabled; reset the flag so the settings switch stays in sync.
+         */
+        isICCProfilesEnabled: true,
       })
       this.populateViewports()
     }
 
     this.publishActiveSeriesToService()
+  }
+
+  /**
+   * Merge a presentation state into component state, replacing any previously
+   * stored instance with the same SOP Instance UID.
+   */
+  private readonly upsertPresentationState = (
+    presentationState: dmv.metadata.AdvancedBlendingPresentationState,
+  ): void => {
+    this.setState((state) => {
+      const mapping: {
+        [sopInstanceUID: string]: dmv.metadata.AdvancedBlendingPresentationState
+      } = {}
+      state.presentationStates.forEach((instance) => {
+        mapping[instance.SOPInstanceUID] = instance
+      })
+      mapping[presentationState.SOPInstanceUID] = presentationState
+      return { presentationStates: Object.values(mapping) }
+    })
   }
 
   /**
@@ -499,19 +536,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                         this.setPresentationState(presentationState)
                       }
                     }
-                    this.setState((state) => {
-                      const mapping: {
-                        [
-                          sopInstanceUID: string
-                        ]: dmv.metadata.AdvancedBlendingPresentationState
-                      } = {}
-                      state.presentationStates.forEach((instance) => {
-                        mapping[instance.SOPInstanceUID] = instance
-                      })
-                      mapping[presentationState.SOPInstanceUID] =
-                        presentationState
-                      return { presentationStates: Object.values(mapping) }
-                    })
+                    this.upsertPresentationState(presentationState)
                   }
                 } else {
                   logger.log(
@@ -613,48 +638,28 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 greenDescriptor:
                   cpLUTItem.GreenPaletteColorLookupTableDescriptor,
                 blueDescriptor: cpLUTItem.BluePaletteColorLookupTableDescriptor,
-                redData:
-                  cpLUTItem.RedPaletteColorLookupTableData !== null &&
-                  cpLUTItem.RedPaletteColorLookupTableData !== undefined
-                    ? new Uint16Array(cpLUTItem.RedPaletteColorLookupTableData)
-                    : undefined,
+                // Pass the LUT data through as retrieved. The element size of
+                // Palette Color Lookup Table Data is governed by the third
+                // value of the descriptor (bits per entry), not by the VR, so
+                // dicom-microscopy-viewer reinterprets the bytes accordingly.
+                // In particular, conformant Presentation States encode 8-bit
+                // entries (descriptor [n, first, 8]) byte-packed inside the
+                // OW element; eagerly wrapping in a Uint16Array here would
+                // halve the entry count and break the LUT.
+                redData: cpLUTItem.RedPaletteColorLookupTableData ?? undefined,
                 greenData:
-                  cpLUTItem.GreenPaletteColorLookupTableData !== null &&
-                  cpLUTItem.GreenPaletteColorLookupTableData !== undefined
-                    ? new Uint16Array(
-                        cpLUTItem.GreenPaletteColorLookupTableData,
-                      )
-                    : undefined,
+                  cpLUTItem.GreenPaletteColorLookupTableData ?? undefined,
                 blueData:
-                  cpLUTItem.BluePaletteColorLookupTableData !== null &&
-                  cpLUTItem.BluePaletteColorLookupTableData !== undefined
-                    ? new Uint16Array(cpLUTItem.BluePaletteColorLookupTableData)
-                    : undefined,
+                  cpLUTItem.BluePaletteColorLookupTableData ?? undefined,
                 redSegmentedData:
-                  cpLUTItem.SegmentedRedPaletteColorLookupTableData !== null &&
-                  cpLUTItem.SegmentedRedPaletteColorLookupTableData !==
-                    undefined
-                    ? new Uint16Array(
-                        cpLUTItem.SegmentedRedPaletteColorLookupTableData,
-                      )
-                    : undefined,
+                  cpLUTItem.SegmentedRedPaletteColorLookupTableData ??
+                  undefined,
                 greenSegmentedData:
-                  cpLUTItem.SegmentedGreenPaletteColorLookupTableData !==
-                    null &&
-                  cpLUTItem.SegmentedGreenPaletteColorLookupTableData !==
-                    undefined
-                    ? new Uint16Array(
-                        cpLUTItem.SegmentedGreenPaletteColorLookupTableData,
-                      )
-                    : undefined,
+                  cpLUTItem.SegmentedGreenPaletteColorLookupTableData ??
+                  undefined,
                 blueSegmentedData:
-                  cpLUTItem.SegmentedBluePaletteColorLookupTableData !== null &&
-                  cpLUTItem.SegmentedBluePaletteColorLookupTableData !==
-                    undefined
-                    ? new Uint16Array(
-                        cpLUTItem.SegmentedBluePaletteColorLookupTableData,
-                      )
-                    : undefined,
+                  cpLUTItem.SegmentedBluePaletteColorLookupTableData ??
+                  undefined,
               })
             }
 
@@ -975,6 +980,89 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   /**
+   * Parse a retrieved Comprehensive 3D SR instance and add the ROIs of a
+   * suitable measurement report to the volume viewer. Returns whether the
+   * report was accepted: ignored documents must not settle the promise in
+   * addAnnotations (matching the pre-refactoring control flow, where the
+   * early returns skipped resolve()).
+   */
+  private readonly addRetrievedSrRois = (
+    retrievedInstance: dwc.api.Dataset,
+  ): boolean => {
+    const data = dcmjs.data.DicomMessage.readFile(retrievedInstance)
+    const { dataset } = dmv.metadata.formatMetadata(data.dict)
+    const report = dataset as unknown as dmv.metadata.Comprehensive3DSR
+    /*
+     * Perform a couple of checks to ensure the document content of the
+     * report fullfils the requirements of the application.
+     */
+    if (!implementsTID1500(report)) {
+      logger.debug(
+        `ignore SR document "${report.SOPInstanceUID}" ` +
+          'because it is not structured according to template ' +
+          'TID 1500 "MeasurementReport"',
+      )
+      return false
+    }
+    if (!describesSpecimenSubject(report)) {
+      logger.debug(
+        `ignore SR document "${report.SOPInstanceUID}" ` +
+          'because it does not describe a specimen subject',
+      )
+      return false
+    }
+    if (!containsROIAnnotations(report)) {
+      logger.debug(
+        `ignore SR document "${report.SOPInstanceUID}" ` +
+          'because it does not contain any suitable ROI annotations',
+      )
+      return false
+    }
+
+    const content = new MeasurementReport(report)
+    content.ROIs.forEach((roi) => {
+      logger.log(`add ROI "${roi.uid}"`)
+      const scoord3d = roi.scoord3d
+      const image = this.props.slide.volumeImages[0]
+      if (scoord3d.frameOfReferenceUID === image.FrameOfReferenceUID) {
+        /*
+         * ROIs may get assigned new UIDs upon re-rendering of the
+         * page and we need to ensure that we don't add them twice.
+         * The same ROI may be stored in multiple SR documents and
+         * we don't want them to show up twice.
+         * TODO: We should probably either "merge" measurements and
+         * quantitative evaluations or pick the ROI from the "best"
+         * available report (COMPLETE and VERIFIED).
+         */
+        const doesROIExist = this.volumeViewer
+          .getAllROIs()
+          .some((otherROI: dmv.roi.ROI): boolean => {
+            return areROIsEqual(otherROI, roi)
+          })
+        if (!doesROIExist) {
+          try {
+            // Add ROI without style such that it won't be visible.
+            this.volumeViewer.addROI(roi, {})
+            const roiAsAnnotation = adaptRoiToAnnotation(roi)
+            this.formatAnnotation(roiAsAnnotation)
+          } catch {
+            logger.error(`could not add ROI "${roi.uid}"`)
+          }
+        } else {
+          logger.debug(`skip already existing ROI "${roi.uid}"`)
+        }
+      } else {
+        logger.debug(
+          `skip ROI "${roi.uid}" ` +
+            `of SR document "${report.SOPInstanceUID}"` +
+            'because it is defined in another frame of reference',
+        )
+      }
+    })
+    return true
+  }
+
+  /**
    * Retrieve Structured Report instances that contain regions of interests
    * with 3D spatial coordinates defined in the same frame of reference as the
    * currently selected series and add them to the VOLUME image viewer.
@@ -1010,81 +1098,9 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                   sopInstanceUID: instance.SOPInstanceUID,
                 })
                 .then((retrievedInstance): void => {
-                  const data =
-                    dcmjs.data.DicomMessage.readFile(retrievedInstance)
-                  const { dataset } = dmv.metadata.formatMetadata(data.dict)
-                  const report =
-                    dataset as unknown as dmv.metadata.Comprehensive3DSR
-                  /*
-                   * Perform a couple of checks to ensure the document content of the
-                   * report fullfils the requirements of the application.
-                   */
-                  if (!implementsTID1500(report)) {
-                    logger.debug(
-                      `ignore SR document "${report.SOPInstanceUID}" ` +
-                        'because it is not structured according to template ' +
-                        'TID 1500 "MeasurementReport"',
-                    )
-                    return
+                  if (this.addRetrievedSrRois(retrievedInstance)) {
+                    resolve()
                   }
-                  if (!describesSpecimenSubject(report)) {
-                    logger.debug(
-                      `ignore SR document "${report.SOPInstanceUID}" ` +
-                        'because it does not describe a specimen subject',
-                    )
-                    return
-                  }
-                  if (!containsROIAnnotations(report)) {
-                    logger.debug(
-                      `ignore SR document "${report.SOPInstanceUID}" ` +
-                        'because it does not contain any suitable ROI annotations',
-                    )
-                    return
-                  }
-
-                  const content = new MeasurementReport(report)
-                  content.ROIs.forEach((roi) => {
-                    logger.log(`add ROI "${roi.uid}"`)
-                    const scoord3d = roi.scoord3d
-                    const image = this.props.slide.volumeImages[0]
-                    if (
-                      scoord3d.frameOfReferenceUID === image.FrameOfReferenceUID
-                    ) {
-                      /*
-                       * ROIs may get assigned new UIDs upon re-rendering of the
-                       * page and we need to ensure that we don't add them twice.
-                       * The same ROI may be stored in multiple SR documents and
-                       * we don't want them to show up twice.
-                       * TODO: We should probably either "merge" measurements and
-                       * quantitative evaluations or pick the ROI from the "best"
-                       * available report (COMPLETE and VERIFIED).
-                       */
-                      const doesROIExist = this.volumeViewer
-                        .getAllROIs()
-                        .some((otherROI: dmv.roi.ROI): boolean => {
-                          return areROIsEqual(otherROI, roi)
-                        })
-                      if (!doesROIExist) {
-                        try {
-                          // Add ROI without style such that it won't be visible.
-                          this.volumeViewer.addROI(roi, {})
-                          const roiAsAnnotation = adaptRoiToAnnotation(roi)
-                          this.formatAnnotation(roiAsAnnotation)
-                        } catch {
-                          logger.error(`could not add ROI "${roi.uid}"`)
-                        }
-                      } else {
-                        logger.debug(`skip already existing ROI "${roi.uid}"`)
-                      }
-                    } else {
-                      logger.debug(
-                        `skip ROI "${roi.uid}" ` +
-                          `of SR document "${report.SOPInstanceUID}"` +
-                          'because it is defined in another frame of reference',
-                      )
-                    }
-                  })
-                  resolve()
                 })
                 .catch((error) => {
                   // eslint-disable-next-line @typescript-eslint/no-floating-promises
@@ -1129,6 +1145,60 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
           )
         })
     })
+  }
+
+  /**
+   * Add retrieved Microscopy Bulk Simple Annotations metadata to the volume
+   * viewer and apply configured styles per annotation group.
+   */
+  private readonly addRetrievedAnnotationGroups = (
+    retrievedMetadata: dwc.api.Metadata[],
+  ): void => {
+    const annotations: dmv.metadata.MicroscopyBulkSimpleAnnotations[] =
+      retrievedMetadata.map((metadata) => {
+        return new dmv.metadata.MicroscopyBulkSimpleAnnotations({
+          metadata,
+        })
+      })
+    annotations.forEach((ann) => {
+      try {
+        this.volumeViewer.addAnnotationGroups(ann)
+      } catch (error: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Microscopy Bulk Simple Annotations cannot be displayed.',
+          ),
+        )
+        logger.error('failed to add annotation groups:', error)
+      }
+      ann.AnnotationGroupSequence.forEach((item) => {
+        const annotationGroupUID = item.AnnotationGroupUID
+        const finding = item.AnnotationPropertyTypeCodeSequence[0]
+        const key = buildKey(finding)
+        const style = this.roiStyles[key]
+        // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
+        if (
+          style !== null &&
+          style !== undefined &&
+          style.fill !== null &&
+          style.fill !== undefined
+        ) {
+          this.volumeViewer.setAnnotationGroupStyle(annotationGroupUID, {
+            color: style.fill.color,
+          })
+        }
+      })
+    })
+    /*
+     * React is not aware of the fact that annotation groups have been
+     * added via the viewer (the underlying HTML viewport element is a
+     * ref object) and won't show the annotation groups in the user
+     * interface unless an update is forced.
+     */
+    this.forceUpdate()
   }
 
   /**
@@ -1180,52 +1250,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 seriesInstanceUID: series.SeriesInstanceUID,
               })
               .then((retrievedMetadata): void => {
-                const annotations: dmv.metadata.MicroscopyBulkSimpleAnnotations[] =
-                  retrievedMetadata.map((metadata) => {
-                    return new dmv.metadata.MicroscopyBulkSimpleAnnotations({
-                      metadata,
-                    })
-                  })
-                annotations.forEach((ann) => {
-                  try {
-                    this.volumeViewer.addAnnotationGroups(ann)
-                  } catch (error: unknown) {
-                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                    NotificationMiddleware.onError(
-                      NotificationMiddlewareContext.SLIM,
-                      new CustomError(
-                        errorTypes.VISUALIZATION,
-                        'Microscopy Bulk Simple Annotations cannot be displayed.',
-                      ),
-                    )
-                    logger.error('failed to add annotation groups:', error)
-                  }
-                  ann.AnnotationGroupSequence.forEach((item) => {
-                    const annotationGroupUID = item.AnnotationGroupUID
-                    const finding = item.AnnotationPropertyTypeCodeSequence[0]
-                    const key = buildKey(finding)
-                    const style = this.roiStyles[key]
-                    // eslint-disable-next-line @typescript-eslint/prefer-optional-chain
-                    if (
-                      style !== null &&
-                      style !== undefined &&
-                      style.fill !== null &&
-                      style.fill !== undefined
-                    ) {
-                      this.volumeViewer.setAnnotationGroupStyle(
-                        annotationGroupUID,
-                        { color: style.fill.color },
-                      )
-                    }
-                  })
-                })
-                /*
-                 * React is not aware of the fact that annotation groups have been
-                 * added via the viewer (the underlying HTML viewport element is a
-                 * ref object) and won't show the annotation groups in the user
-                 * interface unless an update is forced.
-                 */
-                this.forceUpdate()
+                this.addRetrievedAnnotationGroups(retrievedMetadata)
                 finishOne()
               })
               .catch((error) => {
@@ -1267,6 +1292,49 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * frame of reference as the currently selected series and add them to the
    * VOLUME image viewer.
    */
+  /**
+   * Add retrieved Segmentation metadata matching the current slide's frame of
+   * reference and container to the volume viewer.
+   */
+  private readonly addRetrievedSegmentations = (
+    retrievedMetadata: dwc.api.Metadata[],
+  ): void => {
+    const segmentations: dmv.metadata.Segmentation[] = []
+    retrievedMetadata.forEach((metadata) => {
+      const seg = new dmv.metadata.Segmentation({ metadata })
+      const refImage = this.props.slide.volumeImages[0]
+      if (
+        seg.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
+        seg.ContainerIdentifier === refImage.ContainerIdentifier
+      ) {
+        segmentations.push(seg)
+      }
+    })
+    if (segmentations.length > 0) {
+      try {
+        this.volumeViewer.addSegments(segmentations)
+        applyDistinctFractionalSegmentPalettes(this.volumeViewer)
+      } catch (error: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Segmentations cannot be displayed',
+          ),
+        )
+        console.error('failed to add segments: ', error)
+      }
+      /*
+       * React is not aware of the fact that segments have been added via
+       * the viewer (the underlying HTML viewport element is a ref object)
+       * and won't show the segments in the user interface unless an update
+       * is forced.
+       */
+      this.forceUpdate()
+    }
+  }
+
   addSegmentations = async (): Promise<void> => {
     return await new Promise<void>((resolve, reject) => {
       console.info('search for Segmentation instances')
@@ -1312,40 +1380,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 seriesInstanceUID: series.SeriesInstanceUID,
               })
               .then((retrievedMetadata): void => {
-                const segmentations: dmv.metadata.Segmentation[] = []
-                retrievedMetadata.forEach((metadata) => {
-                  const seg = new dmv.metadata.Segmentation({ metadata })
-                  const refImage = this.props.slide.volumeImages[0]
-                  if (
-                    seg.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-                    seg.ContainerIdentifier === refImage.ContainerIdentifier
-                  ) {
-                    segmentations.push(seg)
-                  }
-                })
-                if (segmentations.length > 0) {
-                  try {
-                    this.volumeViewer.addSegments(segmentations)
-                    applyDistinctFractionalSegmentPalettes(this.volumeViewer)
-                  } catch (error: unknown) {
-                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                    NotificationMiddleware.onError(
-                      NotificationMiddlewareContext.SLIM,
-                      new CustomError(
-                        errorTypes.VISUALIZATION,
-                        'Segmentations cannot be displayed',
-                      ),
-                    )
-                    console.error('failed to add segments: ', error)
-                  }
-                  /*
-                   * React is not aware of the fact that segments have been added via
-                   * the viewer (the underlying HTML viewport element is a ref object)
-                   * and won't show the segments in the user interface unless an update
-                   * is forced.
-                   */
-                  this.forceUpdate()
-                }
+                this.addRetrievedSegmentations(retrievedMetadata)
                 finishOne()
               })
               .catch((error) => {
@@ -1386,6 +1421,51 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
    * frame of reference as the currently selected series and add them to the
    * VOLUME image viewer.
    */
+  /**
+   * Add retrieved Parametric Map metadata matching the current slide's frame
+   * of reference and container to the volume viewer.
+   */
+  private readonly addRetrievedParametricMaps = (
+    retrievedMetadata: dwc.api.Metadata[],
+  ): void => {
+    const parametricMaps: dmv.metadata.ParametricMap[] = []
+    retrievedMetadata.forEach((metadata) => {
+      const pm = new dmv.metadata.ParametricMap({ metadata })
+      const refImage = this.props.slide.volumeImages[0]
+      if (
+        pm.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
+        pm.ContainerIdentifier === refImage.ContainerIdentifier
+      ) {
+        parametricMaps.push(pm)
+      } else {
+        console.warn(`skip Parametric Map instance "${pm.SOPInstanceUID}"`)
+      }
+    })
+    if (parametricMaps.length > 0) {
+      try {
+        this.volumeViewer.addParameterMappings(parametricMaps)
+        applyDistinctParametricMapPalettes(this.volumeViewer)
+      } catch (error: unknown) {
+        // eslint-disable-next-line @typescript-eslint/no-floating-promises
+        NotificationMiddleware.onError(
+          NotificationMiddlewareContext.SLIM,
+          new CustomError(
+            errorTypes.VISUALIZATION,
+            'Parametric Map cannot be displayed',
+          ),
+        )
+        console.error('failed to add mappings: ', error)
+      }
+      /*
+       * React is not aware of the fact that mappings have been added via
+       * the viewer (the underlying HTML viewport element is a ref object)
+       * and won't show the mappings in the user interface unless an update
+       * is forced.
+       */
+      this.forceUpdate()
+    }
+  }
+
   addParametricMaps = async (): Promise<void> => {
     return await new Promise<void>((resolve, reject) => {
       console.info('search for Parametric Map instances')
@@ -1429,44 +1509,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
                 seriesInstanceUID: series.SeriesInstanceUID,
               })
               .then((retrievedMetadata): void => {
-                const parametricMaps: dmv.metadata.ParametricMap[] = []
-                retrievedMetadata.forEach((metadata) => {
-                  const pm = new dmv.metadata.ParametricMap({ metadata })
-                  const refImage = this.props.slide.volumeImages[0]
-                  if (
-                    pm.FrameOfReferenceUID === refImage.FrameOfReferenceUID &&
-                    pm.ContainerIdentifier === refImage.ContainerIdentifier
-                  ) {
-                    parametricMaps.push(pm)
-                  } else {
-                    console.warn(
-                      `skip Parametric Map instance "${pm.SOPInstanceUID}"`,
-                    )
-                  }
-                })
-                if (parametricMaps.length > 0) {
-                  try {
-                    this.volumeViewer.addParameterMappings(parametricMaps)
-                    applyDistinctParametricMapPalettes(this.volumeViewer)
-                  } catch (error: unknown) {
-                    // eslint-disable-next-line @typescript-eslint/no-floating-promises
-                    NotificationMiddleware.onError(
-                      NotificationMiddlewareContext.SLIM,
-                      new CustomError(
-                        errorTypes.VISUALIZATION,
-                        'Parametric Map cannot be displayed',
-                      ),
-                    )
-                    console.error('failed to add mappings: ', error)
-                  }
-                  /*
-                   * React is not aware of the fact that mappings have been added via
-                   * the viewer (the underlying HTML viewport element is a ref object)
-                   * and won't show the mappings in the user interface unless an update
-                   * is forced.
-                   */
-                  this.forceUpdate()
-                }
+                this.addRetrievedParametricMaps(retrievedMetadata)
                 finishOne()
               })
               .catch((error) => {
@@ -1514,6 +1557,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
     if (this.volumeViewportRef.current !== null) {
       this.volumeViewer.render({ container: this.volumeViewportRef.current })
+      this.stopOverviewMapClamp?.()
+      this.stopOverviewMapClamp = observeOverviewMapClamp(
+        this.volumeViewportRef.current,
+        { volumeViewer: this.volumeViewer },
+      )
     }
     if (
       this.labelViewportRef.current !== null &&
@@ -1562,6 +1610,11 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     this.volumeViewer.resize()
     if (this.labelViewer !== null && this.labelViewer !== undefined) {
       this.labelViewer.resize()
+    }
+    if (this.volumeViewportRef.current !== null) {
+      clampOverviewMapInViewport(this.volumeViewportRef.current, {
+        volumeViewer: this.volumeViewer,
+      })
     }
   }
 
@@ -2098,6 +2151,56 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     })
   }
 
+  /**
+   * Keep the side-panel segment switch in sync when the overlay's visibility
+   * is toggled from the in-viewport legend (dicom-microscopy-viewer already
+   * applied the change, so we only mirror it into component state).
+   *
+   * DMV's publish() wraps the argument as `detail.payload` (same shape as
+   * ROI / loading events), so read from there — not `detail` itself.
+   */
+  onSegmentVisibilityChanged = (event: CustomEventInit): void => {
+    const detail = event.detail?.payload as
+      | { segmentUID?: string; isVisible?: boolean }
+      | undefined
+    if (detail?.segmentUID == null || detail.isVisible == null) {
+      return
+    }
+    const { segmentUID, isVisible } = detail
+    this.setState((state) => {
+      const visibleSegmentUIDs = new Set(state.visibleSegmentUIDs)
+      if (isVisible) {
+        visibleSegmentUIDs.add(segmentUID)
+      } else {
+        visibleSegmentUIDs.delete(segmentUID)
+      }
+      return { visibleSegmentUIDs }
+    })
+  }
+
+  /**
+   * Keep the side-panel mapping switch in sync when the overlay's visibility
+   * is toggled from the in-viewport legend.
+   */
+  onMappingVisibilityChanged = (event: CustomEventInit): void => {
+    const detail = event.detail?.payload as
+      | { mappingUID?: string; isVisible?: boolean }
+      | undefined
+    if (detail?.mappingUID == null || detail.isVisible == null) {
+      return
+    }
+    const { mappingUID, isVisible } = detail
+    this.setState((state) => {
+      const visibleMappingUIDs = new Set(state.visibleMappingUIDs)
+      if (isVisible) {
+        visibleMappingUIDs.add(mappingUID)
+      } else {
+        visibleMappingUIDs.delete(mappingUID)
+      }
+      return { visibleMappingUIDs }
+    })
+  }
+
   onLoadingStarted = (_event: CustomEventInit): void => {
     this.setState({ isLoading: true })
   }
@@ -2270,9 +2373,20 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       'dicommicroscopyviewer_frame_loading_ended',
       this.onFrameLoadingEnded,
     )
+    document.body.removeEventListener(
+      'dicommicroscopyviewer_segment_visibility_changed',
+      this.onSegmentVisibilityChanged,
+    )
+    document.body.removeEventListener(
+      'dicommicroscopyviewer_parameter_mapping_visibility_changed',
+      this.onMappingVisibilityChanged,
+    )
     document.body.removeEventListener('keyup', this.onKeyUp)
     document.body.removeEventListener('keyup', this.onKeyDown)
     window.removeEventListener('resize', this.onWindowResize)
+
+    this.stopOverviewMapClamp?.()
+    this.stopOverviewMapClamp = undefined
 
     this.volumeViewer.cleanup()
     if (this.labelViewer !== null && this.labelViewer !== undefined) {
@@ -2336,6 +2450,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   componentWillUnmount = (): void => {
+    this.stopOverviewMapClamp?.()
+    this.stopOverviewMapClamp = undefined
     ActiveSeriesService.clear()
     this.volumeViewer.cleanup()
     if (this.labelViewer !== null && this.labelViewer !== undefined) {
@@ -2397,6 +2513,14 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     document.body.addEventListener(
       'dicommicroscopyviewer_frame_loading_error',
       this.onFrameLoadingError,
+    )
+    document.body.addEventListener(
+      'dicommicroscopyviewer_segment_visibility_changed',
+      this.onSegmentVisibilityChanged,
+    )
+    document.body.addEventListener(
+      'dicommicroscopyviewer_parameter_mapping_visibility_changed',
+      this.onMappingVisibilityChanged,
     )
     document.body.addEventListener('keyup', this.onKeyUp)
     document.body.addEventListener('keydown', this.onKeyDown)
@@ -2884,6 +3008,8 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
       opacity?: number
       color?: number[]
       measurement?: dcmjs.sr.coding.CodedConcept
+      fill?: boolean
+      fillOpacity?: number
     }
   }): void => {
     logger.log(`change style of annotation group ${uid}`)
@@ -3016,7 +3142,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     }
     if (styleOptions.color !== undefined) {
       stylePayload.paletteColorLookupTable =
-        SlideViewer.createSegmentPaletteColorLookupTable(styleOptions.color)
+        SlideViewer.createSegmentPaletteColorLookupTable(
+          styleOptions.color,
+          this.volumeViewer.getPaletteDisplayGammaCorrectionEnabled(),
+        )
     }
 
     this.volumeViewer.setSegmentStyle(segmentUID, stylePayload)
@@ -3579,6 +3708,15 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
   }
 
   /**
+   * Toggle display gamma compensation for palette-based rendering (optical paths,
+   * segment overlays, parametric maps).
+   */
+  handlePaletteDisplayGammaCorrectionToggle = (checked: boolean): void => {
+    this.setState({ isPaletteDisplayGammaCorrectionEnabled: checked })
+    this.volumeViewer.setPaletteDisplayGammaCorrectionEnabled(checked)
+  }
+
+  /**
    * Handler that will toggle the segmentation interpolation, i.e., either
    * enable or disable it, depending on its current state.
    */
@@ -4084,6 +4222,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
               defaultSegmentStyles[segment.uid].color !== undefined
                 ? SlideViewer.createSegmentPaletteColorLookupTable(
                     defaultSegmentStyles[segment.uid].color as number[],
+                    this.volumeViewer.getPaletteDisplayGammaCorrectionEnabled(),
                   )
                 : undefined,
           })
@@ -4565,6 +4704,26 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     )
   }
 
+  private readonly getPaletteDisplayGammaCorrectionMenu =
+    (): React.ReactNode => {
+      return (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: '0.75rem',
+          }}
+        >
+          <span>Gamma correction</span>
+          <Switch
+            checked={this.state.isPaletteDisplayGammaCorrectionEnabled}
+            onChange={this.handlePaletteDisplayGammaCorrectionToggle}
+          />
+        </div>
+      )
+    }
+
   private readonly getSegmentationInterpolationMenu = (): React.ReactNode => {
     const segments = this.volumeViewer.getAllSegments()
     return (
@@ -4588,6 +4747,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
   private readonly getSettingsPanelContent = (menus: {
     iccProfilesMenu: React.ReactNode
+    gammaCorrectionMenu: React.ReactNode
     segmentationInterpolationMenu: React.ReactNode
   }): React.ReactNode => {
     const menuItems: React.ReactNode[] = []
@@ -4595,7 +4755,10 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     menuItems.push(
       <Menu.SubMenu key="display" title="Display">
         <Menu.Item key="display-content" disabled style={{ cursor: 'default' }}>
-          <div className="slim-settings-content">{menus.iccProfilesMenu}</div>
+          <div className="slim-settings-content">
+            {menus.iccProfilesMenu}
+            {menus.gammaCorrectionMenu}
+          </div>
         </Menu.Item>
       </Menu.SubMenu>,
     )
@@ -4734,6 +4897,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     const cursor = this.getCursor()
     const selectedRoiInformation = this.getSelectedRoiInformation()
     const iccProfilesMenu = this.getICCProfilesMenu()
+    const gammaCorrectionMenu = this.getPaletteDisplayGammaCorrectionMenu()
     const segmentationInterpolationMenu =
       this.getSegmentationInterpolationMenu()
 
@@ -4741,6 +4905,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
 
     const settingsPanelContent = this.getSettingsPanelContent({
       iccProfilesMenu,
+      gammaCorrectionMenu,
       segmentationInterpolationMenu,
     })
 
@@ -4760,7 +4925,7 @@ class SlideViewer extends React.Component<SlideViewerProps, SlideViewerState> {
     annotations?.forEach?.(this.formatAnnotation)
 
     return (
-      <Layout style={{ height: '100%' }} hasSider>
+      <Layout style={{ height: '100%', minHeight: 0 }} hasSider>
         <SettingsRegistration
           onOpenSettings={() => this.setState({ isSettingsDrawerOpen: true })}
         />

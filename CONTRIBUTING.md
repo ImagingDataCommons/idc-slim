@@ -31,17 +31,19 @@ The app is built using [craco](https://github.com/gsoft-inc/craco) (with the [cr
 
 Tests are written and run using the [jest](https://jestjs.io/) framework.
 
-The [Bun](https://bun.sh/) runtime and package manager is used to manage dependencies and run scripts specified in `package.json` (`build`, `lint`, `test`, etc.).
+The [pnpm](https://pnpm.io/) package manager is used to manage dependencies and run scripts specified in `package.json` (`build`, `lint`, `test`, etc.).
 
 ## Coding style
 
 Source code is linted and formatted using [Biome](https://biomejs.dev/). TypeScript is used with [strict type checking compiler options](https://www.typescriptlang.org/tsconfig#Strict_Type_Checking_Options_6173) enabled. Semicolons are not used at the end of statements (Biome uses `asNeeded`).
 
+Explanatory comments use JSDoc-style block comments (`/** … */`), not `//` line comments. Keep `//` only for tooling directives (`eslint-disable`, `@ts-expect-error`, `biome-ignore`), temporarily commented-out code, and shebang lines.
+
 Use the following commands to check and fix style:
 
-    $ bun run lint        # check for issues
-    $ bun run lint:fix    # auto-fix issues
-    $ bun run fmt         # format code
+    $ pnpm run lint        # check for issues
+    $ pnpm run lint:fix    # auto-fix issues
+    $ pnpm run fmt         # format code
 
 
 ### Documentation
@@ -62,3 +64,42 @@ const checkValues = ({ foo, bar }: { foo: string, bar: number }): boolean => {}
 ```
 
 The types of parameters and return values are omitted in docstring comments, given that type annotations are already available in TypeScript.
+
+## Pull requests
+
+Use the repository pull request template. Include a clear summary, testing notes, and a semantic-release style title (for example `feat(Worklist): …`, `fix(SlideViewer): …`).
+
+### Pairing a Firebase preview with dicom-microscopy-viewer
+
+If your Slim change depends on an unreleased
+[dicom-microscopy-viewer](https://github.com/ImagingDataCommons/dicom-microscopy-viewer)
+branch, the Firebase preview workflow can install that branch automatically.
+
+There are **two ways** to link a DMV branch (both require an open PR in DMV):
+
+1. **Explicit `dmv-branch:`** — add a line near the top of the PR body:
+
+   ```text
+   dmv-branch: feat/my-dmv-change
+   ```
+
+2. **Matching branch name** — use the same branch name in both repos (for example
+   `feat/my-change` in both Slim and DMV). No configuration needed — the workflow
+   detects matching branches automatically.
+
+If both methods apply, `dmv-branch:` takes priority. If neither applies, the
+preview uses the published npm version from `package.json`.
+
+#### PR comments
+
+The workflow automatically posts a comment on your PR indicating which DMV
+version the Firebase preview is using:
+
+- **Linked to DMV Branch** — shows the branch name, commit SHA, and source
+  (explicit `dmv-branch:` or matching branch name)
+- **Using Published DMV** — shows the version from `package.json`
+
+#### Retriggering the preview
+
+Editing the PR description to add or change `dmv-branch:` retriggers the Firebase
+preview workflow (body edits only; title-only edits are ignored).
