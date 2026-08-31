@@ -3,16 +3,10 @@ window.config = {
   servers: [
     {
       id: 'preview',
-      url: 'https://proxy.imaging.datacommons.cancer.gov/current/viewer-only-no-downloads-see-tinyurl-dot-com-slash-3j3d9jyp/dicomWeb',
+      url: window.slim.env.SLIM_PREVIEW_DICOMWEB_URL,
       write: false
     }
   ],
-  oidc: {
-    authority: 'https://accounts.google.com',
-    clientId: '293449031882-k4um45hl4g94fsgbnviel0lh38836i9v.apps.googleusercontent.com',
-    scope: 'email profile openid https://www.googleapis.com/auth/cloud-healthcare',
-    grantType: 'implicit'
-  },
   disableWorklist: false,
   disableAnnotationTools: false,
   enableServerSelection: true,

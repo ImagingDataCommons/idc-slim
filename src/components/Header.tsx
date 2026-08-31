@@ -10,7 +10,6 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 import {
-  Badge,
   Col,
   Collapse,
   Dropdown,
@@ -38,6 +37,11 @@ import NotificationMiddleware, {
 } from '../services/NotificationMiddleware'
 import type { CustomError } from '../utils/CustomError'
 import { type RouteComponentProps, withRouter } from '../utils/router'
+import {
+  isGcpDicomStorePath,
+  isViewerPath,
+  parseSeriesInstanceUID,
+} from '../utils/routes'
 import { normalizeServerUrl } from '../utils/url'
 import Button from './Button'
 import DicomTagBrowser from './DicomTagBrowser/DicomTagBrowser'
@@ -47,8 +51,6 @@ const aboutModalCopyTooltips: [React.ReactNode, React.ReactNode] = [
   'Copy hash',
   'Copied!',
 ]
-
-const DICOM_TAG_BROWSER_PATHS = ['/studies/', '/study/', '/projects/'] as const
 
 const aboutModalStyles: Record<string, React.CSSProperties> = {
   container: {
@@ -89,6 +91,84 @@ const aboutModalStyles: Record<string, React.CSSProperties> = {
   },
 }
 
+/**
+ * Static count pill that avoids antd Badge → rc-motion `findDOMNode`
+ * (deprecated under React Strict Mode).
+ *
+ * Layout/CSS mirrors antd Badge (compact): wrapper `line-height: 1` so the
+ * header's 64px line-height cannot inflate the positioning context, and the
+ * count uses `top/right: 0` + `translate(50%, -50%)` to sit on the corner.
+ * Measured repro: without `line-height: 1`, a `top: -4` pill pins to y=0 and
+ * AppShell `overflow: hidden` crops it.
+ */
+function HeaderCountBadge({
+  count,
+  color = '#ff4d4f',
+  zIndex,
+  /** Same meaning as antd Badge `offset`: [offsetX, offsetY] in px. */
+  offset = [0, 0],
+  children,
+}: {
+  count: number
+  color?: string
+  zIndex?: number
+  offset?: [number, number]
+  children?: React.ReactNode
+}): JSX.Element {
+  const [offsetX, offsetY] = offset
+  const pill =
+    count > 0 ? (
+      <span
+        style={{
+          position: children != null ? 'absolute' : 'relative',
+          top: children != null ? 0 : undefined,
+          right: children != null ? 0 : undefined,
+          transform:
+            children != null
+              ? `translate(50%, -50%) translate(${offsetX}px, ${offsetY}px)`
+              : undefined,
+          transformOrigin: children != null ? '100% 0%' : undefined,
+          zIndex,
+          display: 'inline-block',
+          minWidth: 18,
+          height: 18,
+          padding: '0 6px',
+          borderRadius: 9,
+          background: color,
+          color: '#fff',
+          fontSize: 12,
+          fontWeight: 'normal',
+          lineHeight: '18px',
+          whiteSpace: 'nowrap',
+          textAlign: 'center',
+          boxShadow: '0 0 0 1px #fff',
+          pointerEvents: 'none',
+          verticalAlign: children != null ? undefined : 'middle',
+        }}
+      >
+        {count > 99 ? '99+' : count}
+      </span>
+    ) : null
+
+  if (children == null) {
+    return <>{pill}</>
+  }
+
+  return (
+    <span
+      style={{
+        position: 'relative',
+        display: 'inline-block',
+        lineHeight: 1,
+        verticalAlign: 'middle',
+      }}
+    >
+      {children}
+      {pill}
+    </span>
+  )
+}
+
 interface HeaderProps extends RouteComponentProps {
   app: {
     name: string
@@ -119,6 +199,9 @@ interface HeaderState {
   errorCategory: string[]
   warnings: string[]
   serverSelectionMode: 'default' | 'custom'
+  /** False only when both custom logo.svg and favicon.ico fail. */
+  showLogo: boolean
+  logoUrl: string
 }
 
 /**
@@ -148,6 +231,8 @@ class Header extends React.Component<HeaderProps, HeaderState> {
         cachedServerUrl !== ''
           ? 'custom'
           : 'default',
+      showLogo: true,
+      logoUrl: `${process.env.PUBLIC_URL}/logo.svg`,
     }
 
     const onErrorHandler = ({
@@ -200,6 +285,46 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     }
   }
 
+  private static readonly defaultLogoUrl =
+    `${process.env.PUBLIC_URL}/favicon.ico`
+
+  handleLogoError = (): void => {
+    if (this.state.logoUrl !== Header.defaultLogoUrl) {
+      this.setState({ logoUrl: Header.defaultLogoUrl })
+      return
+    }
+    this.setState({ showLogo: false })
+  }
+
+  /**
+   * public/logo.svg may be an empty Illustrator placeholder (viewBox only).
+   * Fall back to favicon.ico, the default Slim brand mark.
+   */
+  handleLogoLoad = (event: React.SyntheticEvent<HTMLImageElement>): void => {
+    const src = event.currentTarget.currentSrc || event.currentTarget.src
+    if (!src.includes('logo.svg')) {
+      return
+    }
+    void fetch(src)
+      .then(async (response) => {
+        if (!response.ok) {
+          this.setState({ logoUrl: Header.defaultLogoUrl })
+          return
+        }
+        const markup = await response.text()
+        const hasGraphic =
+          /<(?:path|rect|circle|ellipse|polygon|polyline|line|text|image|use|g)\b/i.test(
+            markup,
+          )
+        if (!hasGraphic) {
+          this.setState({ logoUrl: Header.defaultLogoUrl })
+        }
+      })
+      .catch(() => {
+        this.setState({ logoUrl: Header.defaultLogoUrl })
+      })
+  }
+
   isValidServerUrl = (url: string | null | undefined): boolean => {
     if (url == null || url === '') {
       return false
@@ -217,12 +342,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
       }
     }
     const pathNorm = trimmedUrl.startsWith('/') ? trimmedUrl : `/${trimmedUrl}`
-    return (
-      pathNorm.includes('/projects/') &&
-      pathNorm.includes('/locations/') &&
-      pathNorm.includes('/datasets/') &&
-      pathNorm.includes('/dicomStores/')
-    )
+    return isGcpDicomStorePath(pathNorm)
   }
 
   static handleUserMenuButtonClick(e: React.SyntheticEvent): void {
@@ -371,13 +491,9 @@ class Header extends React.Component<HeaderProps, HeaderState> {
   handleDicomTagBrowserButtonClick = (): void => {
     const width = window.innerWidth - 200
 
-    let seriesInstanceUID = ''
-    if (this.props.location.pathname.includes('series/')) {
-      const seriesFragment = this.props.location.pathname.split('series/')[1]
-      seriesInstanceUID = seriesFragment.includes('/')
-        ? seriesFragment.split('/')[0]
-        : seriesFragment
-    }
+    const seriesInstanceUID = parseSeriesInstanceUID(
+      this.props.location.pathname,
+    )
 
     Modal.info({
       title: 'DICOM Tag Browser',
@@ -425,11 +541,14 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     const { Panel } = Collapse
 
     const showErrorCount = (errcount: number): JSX.Element => (
-      <Badge count={errcount} />
+      <HeaderCountBadge count={errcount} />
     )
 
     const showWarningCount = (warncount: number): JSX.Element => (
-      <Badge color={warncount > 0 ? 'green' : undefined} count={warncount} />
+      <HeaderCountBadge
+        count={warncount}
+        color={warncount > 0 ? '#52c41a' : '#ff4d4f'}
+      />
     )
 
     Modal.info({
@@ -625,24 +744,23 @@ class Header extends React.Component<HeaderProps, HeaderState> {
     )
 
     const debugButton = (
-      <Badge count={this.state.errorObj.length} style={{ zIndex: 1000 }}>
-        <Badge
-          color={this.state.warnings.length > 0 ? 'green' : undefined}
+      <HeaderCountBadge count={this.state.errorObj.length} zIndex={1000}>
+        <HeaderCountBadge
           count={this.state.warnings.length}
-          style={{ zIndex: 1001 }}
+          color="#52c41a"
+          zIndex={1001}
+          offset={this.state.errorObj.length > 0 ? [-16, 0] : [0, 0]}
         >
           <Button
             icon={BugOutlined}
             tooltip="Debug info"
             onClick={this.handleDebugButtonClick}
           />
-        </Badge>
-      </Badge>
+        </HeaderCountBadge>
+      </HeaderCountBadge>
     )
 
-    const showDicomTagBrowser = DICOM_TAG_BROWSER_PATHS.some((path) =>
-      this.props.location.pathname.includes(path),
-    )
+    const showDicomTagBrowser = isViewerPath(this.props.location.pathname)
 
     const dicomTagBrowserButton = showDicomTagBrowser ? (
       <Button
@@ -663,8 +781,6 @@ class Header extends React.Component<HeaderProps, HeaderState> {
       )
     }
 
-    const logoUrl = `${process.env.PUBLIC_URL}/logo.svg`
-
     const selectedServerUrl =
       this.props.clients?.default?.baseURL ??
       this.props.defaultClients?.default?.baseURL ??
@@ -680,8 +796,8 @@ class Header extends React.Component<HeaderProps, HeaderState> {
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              paddingRight: '20px',
-              paddingLeft: '20px',
+              paddingRight: 16,
+              paddingLeft: this.state.showLogo ? 16 : 0,
             }}
             title={selectedServerUrl}
           >
@@ -692,17 +808,35 @@ class Header extends React.Component<HeaderProps, HeaderState> {
 
     return (
       <>
-        <Layout.Header style={{ width: '100%', padding: '0 14px' }}>
-          <Row style={{ flexWrap: 'nowrap' }}>
-            <Col style={{ flexShrink: 0 }}>
-              <Space align="center" direction="horizontal">
+        <Layout.Header style={{ width: '100%', padding: '0 16px' }}>
+          <Row style={{ flexWrap: 'nowrap' }} align="middle">
+            {this.state.showLogo ? (
+              <Col style={{ flexShrink: 0 }}>
                 <img
-                  src={logoUrl}
-                  alt=""
-                  style={{ height: '64px', margin: '-14px' }}
+                  src={this.state.logoUrl}
+                  alt="Slim"
+                  onError={this.handleLogoError}
+                  onLoad={this.handleLogoLoad}
+                  style={
+                    this.state.logoUrl === Header.defaultLogoUrl
+                      ? {
+                          display: 'block',
+                          height: 32,
+                          width: 32,
+                          objectFit: 'contain',
+                        }
+                      : {
+                          // Preserve legacy sizing for deployments with a custom logo.svg
+                          display: 'block',
+                          height: 64,
+                          margin: '-14px',
+                          width: 'auto',
+                          objectFit: 'contain',
+                        }
+                  }
                 />
-              </Space>
-            </Col>
+              </Col>
+            ) : null}
             <Col flex="auto" style={{ minWidth: 0, overflow: 'hidden' }}>
               <div style={{ width: '100%', overflow: 'hidden' }}>
                 {this.props.showServerSelectionButton ? urlInfo : ''}
@@ -747,7 +881,7 @@ class Header extends React.Component<HeaderProps, HeaderState> {
           {this.state.serverSelectionMode === 'custom' && (
             <Tooltip title={this.state.selectedServerUrl?.trim()}>
               <Input
-                placeholder="Full URL or GCP path (e.g. /projects/.../dicomStores/.../dicomWeb)"
+                placeholder="Full URL or GCP path (e.g. /projects/.../dicomStores/my-store)"
                 value={this.state.selectedServerUrl}
                 onChange={this.handleServerSelectionInput}
                 onPressEnter={this.handleServerSelection}

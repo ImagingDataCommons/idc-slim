@@ -14,23 +14,20 @@ RUN apt-get update && \
     unzip && \
     apt-get clean
 
-RUN curl -fsSL https://deb.nodesource.com/setup_21.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get update && \
     apt-get install -y --no-install-suggests --no-install-recommends \
     nodejs && \
     apt-get clean
 
-# Install Bun (matches packageManager in package.json)
-ENV BUN_INSTALL=/usr/local
-RUN curl -fsSL https://bun.sh/install | bash -
+RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
 
 WORKDIR /usr/local/share/mghcomputationalpathology/slim
 
 # Install dependencies first and then include code for efficient caching
-COPY package.json .
-COPY bun.lock .
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 
-RUN bun install --frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 COPY craco.config.js .
 COPY tsconfig.json .
@@ -45,7 +42,11 @@ RUN chmod +x scripts/*.sh
 FROM lib AS app
 
 ARG REACT_APP_CONFIG=local
-ENV PUBLIC_URL=/
+# Public default for docker-compose DICOMweb; override at build time if needed.
+ARG SLIM_LOCAL_DICOMWEB_URL=http://localhost:8008/dcm4chee-arc/aets/DCM4CHEE/rs
+ENV PUBLIC_URL=/ \
+    REACT_APP_CONFIG=${REACT_APP_CONFIG} \
+    SLIM_LOCAL_DICOMWEB_URL=${SLIM_LOCAL_DICOMWEB_URL}
 
 RUN addgroup --system --gid 101 nginx && \
     adduser --system \
@@ -56,7 +57,7 @@ RUN addgroup --system --gid 101 nginx && \
             --shell /bin/false \
             nginx
 
-RUN NODE_OPTIONS=--max_old_space_size=8192 bun run build && \
+RUN NODE_OPTIONS=--max_old_space_size=8192 pnpm run build && \
         mkdir -p /var/www/html && \
         cp -R build/* /var/www/html/
 
@@ -81,4 +82,4 @@ RUN useradd -m -s /bin/bash tester && \
 
 USER tester
 
-ENTRYPOINT ["/usr/bin/dumb-init", "--", "bun", "run", "test"]
+ENTRYPOINT ["/usr/bin/dumb-init", "--", "pnpm", "run", "test"]

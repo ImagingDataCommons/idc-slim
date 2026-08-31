@@ -1,0 +1,61 @@
+name: slim/container-tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-and-test-containers:
+    name: "Build and test containers"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build and run containers using docker compose
+        run: docker compose up -d
+
+      - name: Test web page
+        run: |
+          # Poll: compose returns as soon as the container process starts,
+          # before nginx is listening (same flake as a bare curl right after up).
+          for i in $(seq 1 30); do
+            if curl -sI http://localhost:8008/ | grep -q '200 OK' \
+              && curl -s http://localhost:8008/ | grep -q '<title>Slim</title>'; then
+              echo "Slim web page ready"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Slim web page did not become ready in time"
+          docker compose ps || true
+          docker compose logs --tail=80 app || true
+          exit 1
+
+      - name: Test DICOMweb service
+        run: |
+          # Poll instead of a fixed sleep: the archive can take a while to boot.
+          for i in $(seq 1 30); do
+            if curl -sI http://localhost:8008/dcm4chee-arc/aets/DCM4CHEE/rs/studies | grep -o '204 No Content'; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "DICOMweb service did not become ready in time"
+          exit 1
+
+      - name: Wildfly internal server.log
+        if: always()
+        run: |
+          docker cp dcm4chee-arc:/opt/wildfly/standalone/log/server.log ./server.log || echo "Log not found"
+          cat ./server.log || echo "Log not found"
