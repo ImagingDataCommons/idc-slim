@@ -20,6 +20,7 @@ import CaseViewer from './components/CaseViewer'
 import Header from './components/Header'
 import InfoPage from './components/InfoPage'
 import Worklist from './components/Worklist'
+import { DownloadProvider } from './contexts/DownloadContext'
 import { SettingsProvider } from './contexts/SettingsContext'
 import { ValidationProvider } from './contexts/ValidationContext'
 import DicomWebManager from './DicomWebManager'
@@ -656,29 +657,31 @@ class App extends React.Component<AppProps, AppState> {
               path={RoutePaths.STUDY}
               element={
                 <SettingsProvider>
-                  <AppShell enableMemoryMonitoring={enableMemoryMonitoring}>
-                    <Layout style={layoutStyle}>
-                      <Header
-                        app={appInfo}
-                        user={this.state.user}
-                        showWorklistButton={enableWorklist}
-                        onServerSelection={this.handleServerSelection}
-                        onUserLogout={isLogoutPossible ? onLogout : undefined}
-                        showServerSelectionButton={enableServerSelection}
-                        clients={this.state.clients}
-                        defaultClients={this.state.defaultClients}
-                        appConfig={this.props.config}
-                      />
-                      <Layout.Content style={layoutContentStyle}>
-                        <ParametrizedCaseViewer
-                          clients={this.state.clients}
-                          user={this.state.user}
-                          config={this.props.config}
+                  <DownloadProvider>
+                    <AppShell enableMemoryMonitoring={enableMemoryMonitoring}>
+                      <Layout style={layoutStyle}>
+                        <Header
                           app={appInfo}
+                          user={this.state.user}
+                          showWorklistButton={enableWorklist}
+                          onServerSelection={this.handleServerSelection}
+                          onUserLogout={isLogoutPossible ? onLogout : undefined}
+                          showServerSelectionButton={enableServerSelection}
+                          clients={this.state.clients}
+                          defaultClients={this.state.defaultClients}
+                          appConfig={this.props.config}
                         />
-                      </Layout.Content>
-                    </Layout>
-                  </AppShell>
+                        <Layout.Content style={layoutContentStyle}>
+                          <ParametrizedCaseViewer
+                            clients={this.state.clients}
+                            user={this.state.user}
+                            config={this.props.config}
+                            app={appInfo}
+                          />
+                        </Layout.Content>
+                      </Layout>
+                    </AppShell>
+                  </DownloadProvider>
                 </SettingsProvider>
               }
             />
@@ -686,29 +689,31 @@ class App extends React.Component<AppProps, AppState> {
               path={RoutePaths.GCP_STUDY}
               element={
                 <SettingsProvider>
-                  <AppShell enableMemoryMonitoring={enableMemoryMonitoring}>
-                    <Layout style={layoutStyle}>
-                      <Header
-                        app={appInfo}
-                        user={this.state.user}
-                        showWorklistButton={enableWorklist}
-                        onServerSelection={this.handleServerSelection}
-                        onUserLogout={isLogoutPossible ? onLogout : undefined}
-                        showServerSelectionButton={enableServerSelection}
-                        clients={this.state.clients}
-                        defaultClients={this.state.defaultClients}
-                        appConfig={this.props.config}
-                      />
-                      <Layout.Content style={layoutContentStyle}>
-                        <ParametrizedCaseViewer
-                          clients={this.state.clients}
-                          user={this.state.user}
-                          config={this.props.config}
+                  <DownloadProvider>
+                    <AppShell enableMemoryMonitoring={enableMemoryMonitoring}>
+                      <Layout style={layoutStyle}>
+                        <Header
                           app={appInfo}
+                          user={this.state.user}
+                          showWorklistButton={enableWorklist}
+                          onServerSelection={this.handleServerSelection}
+                          onUserLogout={isLogoutPossible ? onLogout : undefined}
+                          showServerSelectionButton={enableServerSelection}
+                          clients={this.state.clients}
+                          defaultClients={this.state.defaultClients}
+                          appConfig={this.props.config}
                         />
-                      </Layout.Content>
-                    </Layout>
-                  </AppShell>
+                        <Layout.Content style={layoutContentStyle}>
+                          <ParametrizedCaseViewer
+                            clients={this.state.clients}
+                            user={this.state.user}
+                            config={this.props.config}
+                            app={appInfo}
+                          />
+                        </Layout.Content>
+                      </Layout>
+                    </AppShell>
+                  </DownloadProvider>
                 </SettingsProvider>
               }
             />

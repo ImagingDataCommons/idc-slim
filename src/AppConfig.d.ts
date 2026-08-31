@@ -87,6 +87,46 @@ export interface DownloadStudyDialogSettings {
   }>
 }
 
+/**
+ * Direct in-browser download of DICOM files, streamed from public object
+ * storage into a folder the user picks.
+ *
+ * Absent or `enabled: false` leaves the existing command-line instructions as
+ * the only option, which is the right default: a deployment pointed at a
+ * DICOMweb server that is not backed by a supported archive has nothing for the
+ * resolver to find, and offering a button that resolves nothing is worse than
+ * not offering one.
+ */
+export interface DownloadSettings {
+  /** Defaults to false. Must be set explicitly to show the direct option. */
+  enabled?: boolean
+  /** Which archive to resolve identifiers against. */
+  provider?: 'idc'
+  /** Overrides for the IDC resolver; only read when `provider` is 'idc'. */
+  idc?: {
+    /** Defaults to the public IDC v3 API. v1 and v2 are deprecated. */
+    baseUrl?: string
+    region?: string
+    pageSize?: number
+    docsUrl?: string
+  }
+  /**
+   * On-disk layout. 'nested' mirrors the `idc download` CLI's tree; 'flat'
+   * keeps paths short for destinations with a length limit and writes a CSV
+   * manifest mapping filenames back to identifiers.
+   */
+  layout?: 'nested' | 'flat'
+  /** Parallel transfers. Defaults to the per-origin connection limit. */
+  concurrency?: number
+  limits?: {
+    /** Warn above this size, in bytes. */
+    warnBytes?: number
+    /** Refuse above this size, in bytes. */
+    refuseBytes?: number
+    maxFiles?: number
+  }
+}
+
 export default interface AppConfig {
   /**
    * Currently, only one server is supported. However, support for multiple
@@ -107,6 +147,7 @@ export default interface AppConfig {
   mode?: string
   preload?: boolean
   downloadStudyDialog?: DownloadStudyDialogSettings
+  download?: DownloadSettings
   messages?: {
     disabled?: boolean | string[]
     top?: number
