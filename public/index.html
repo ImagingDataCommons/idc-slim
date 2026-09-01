@@ -21,7 +21,8 @@
       content="Slide Microscopy Viewer"
     />
     <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!-- Application Configuration -->
+    <!-- Application Configuration. Optional SLIM_* vars → window.slim.env via env.js -->
+    <script type="text/javascript" src="%PUBLIC_URL%/config/env.js"></script>
     <script type="text/javascript" src="%PUBLIC_URL%/config/%REACT_APP_CONFIG%.js"></script>
     <!--
       manifest.json provides metadata used when your web app is installed on a
@@ -35,7 +36,7 @@
 
       Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
       work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
+      Learn how to configure a non-root public URL by running `pnpm run build`.
     -->
     <title>Slim</title>
 
@@ -72,8 +73,8 @@
       You can add webfonts, meta tags, or analytics to this file.
       The build step will place the bundled scripts into the <body> tag.
 
-      To begin the development, run `npm start` or `bun run start`.
-      To create a production bundle, use `npm run build` or `bun run build`.
+      To begin the development, run `pnpm start`.
+      To create a production bundle, use `pnpm run build`.
     -->
   </body>
 </html>

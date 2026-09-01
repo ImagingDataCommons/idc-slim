@@ -37,12 +37,11 @@ apt-get install -y --no-install-suggests --no-install-recommends apt-transport-h
 
 apt-get clean
 
-curl -sL https://deb.nodesource.com/setup_20.x | bash -
+curl -sL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs
 
-# Install Bun system-wide (to /usr/local so it's in PATH)
-export BUN_INSTALL=/usr/local
-curl -fsSL https://bun.sh/install | bash
+corepack enable
+corepack prepare pnpm@11.9.0 --activate
 
 apt-get clean
 
